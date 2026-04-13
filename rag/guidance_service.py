@@ -9,6 +9,14 @@ class BreedGuidanceService:
 
     def __init__(self):
         self.retriever = BreedGuidanceRetriever()
+        self.energy_rank = {
+            "low": 1,
+            "low_to_medium": 2,
+            "medium": 3,
+            "medium_to_high": 4,
+            "high": 5,
+            "very_high": 6,
+        }
 
     def _merge_window(
         self,
@@ -41,6 +49,8 @@ class BreedGuidanceService:
         latest_end = None
         sources = []
         reasons = []
+        exercise_types = []
+        energy_levels = []
 
         for entry in entries:
             priority_boost += float(entry.get("priority_boost", 0.0))
@@ -56,6 +66,19 @@ class BreedGuidanceService:
             reason = entry.get("reason")
             if reason and reason not in reasons:
                 reasons.append(reason)
+            for exercise in entry.get("preferred_exercise_types", []):
+                if exercise not in exercise_types:
+                    exercise_types.append(exercise)
+            energy = entry.get("energy_level")
+            if energy and energy not in energy_levels:
+                energy_levels.append(energy)
+
+        primary_energy_level = None
+        if energy_levels:
+            primary_energy_level = max(
+                energy_levels,
+                key=lambda level: self.energy_rank.get(level, 0),
+            )
 
         return {
             "priority_boost": round(priority_boost, 2),
@@ -63,5 +86,8 @@ class BreedGuidanceService:
             "latest_end": latest_end,
             "sources": sources,
             "reasons": reasons,
+            "preferred_exercise_types": exercise_types,
+            "energy_levels": energy_levels,
+            "energy_level": primary_energy_level,
             "has_guidance": len(entries) > 0,
         }

@@ -42,6 +42,8 @@ class BreedGuidanceRetriever:
                     "source_id": species_entry.get("source_id", f"species:{species_key}:general"),
                     "priority_boost": float(rule.get("priority_boost", 0.0)),
                     "reason": rule.get("reason", "Species guidance applied."),
+                    "energy_level": species_entry.get("energy_level"),
+                    "preferred_exercise_types": species_entry.get("preferred_exercise_types", []),
                 }
                 window = rule.get("preferred_window")
                 if window and "start" in window and "end" in window:
@@ -56,6 +58,8 @@ class BreedGuidanceRetriever:
                     "source_id": breed_entry.get("source_id", f"breed:{breed_key}:general"),
                     "priority_boost": float(rule.get("priority_boost", 0.0)),
                     "reason": rule.get("reason", "Breed guidance applied."),
+                    "energy_level": breed_entry.get("energy_level"),
+                    "preferred_exercise_types": breed_entry.get("preferred_exercise_types", []),
                 }
                 window = rule.get("preferred_window")
                 if window and "start" in window and "end" in window:

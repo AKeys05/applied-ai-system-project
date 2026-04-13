@@ -442,11 +442,17 @@ with tab1:
                     confidence = item.get('confidence_score', 0.0)
                     rules = item.get('applied_rules', [])
                     sources = item.get('retrieval_sources', [])
+                    guidance_profile = item.get('guidance_profile', {})
                     source_text = ", ".join(sources) if sources else "-"
+                    energy_level = guidance_profile.get('energy_level', '-')
+                    exercise_types = guidance_profile.get('preferred_exercise_types', [])
+                    exercise_text = ", ".join(exercise_types) if exercise_types else "-"
                     st.caption(
                         f"{task.title}: confidence={confidence:.2f} | "
                         f"rules={', '.join(rules) if rules else '-'} | "
-                        f"sources={source_text}"
+                        f"sources={source_text} | "
+                        f"energy={energy_level} | "
+                        f"exercise={exercise_text}"
                     )
 
             reliability = scheduler.get_reliability_report()

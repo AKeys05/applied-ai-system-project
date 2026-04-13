@@ -278,6 +278,8 @@ def test_rag_guidance_adds_sources_and_rule_tags():
 	assert "rag_guidance" in item['applied_rules']
 	assert len(item['retrieval_sources']) > 0
 	assert any("breed:border_collie" in source for source in item['retrieval_sources'])
+	assert item['guidance_profile']['energy_level'] == "very_high"
+	assert "training" in item['guidance_profile']['preferred_exercise_types']
 
 
 def test_rag_guidance_shapes_exercise_task_scheduling():

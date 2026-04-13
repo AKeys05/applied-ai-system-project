@@ -624,6 +624,9 @@ class Scheduler:
 					'latest_end': None,
 					'sources': [],
 					'reasons': [],
+					'preferred_exercise_types': [],
+					'energy_levels': [],
+					'energy_level': None,
 					'has_guidance': False,
 				}
 
@@ -657,6 +660,10 @@ class Scheduler:
 			confidence_score = 1.0
 			guidance = self.task_guidance.get(task.id, {})
 			retrieval_sources = list(task.retrieval_sources)
+			guidance_profile = {
+				'energy_level': guidance.get('energy_level'),
+				'preferred_exercise_types': list(guidance.get('preferred_exercise_types', [])),
+			}
 			for source in guidance.get('sources', []):
 				if source not in retrieval_sources:
 					retrieval_sources.append(source)
@@ -735,6 +742,10 @@ class Scheduler:
 
 				if guidance.get('reasons'):
 					reason += f". Guidance: {'; '.join(guidance['reasons'])}"
+				if guidance.get('energy_level'):
+					reason += f" Energy profile: {guidance['energy_level']}."
+				if guidance.get('preferred_exercise_types'):
+					reason += f" Suggested exercise types: {', '.join(guidance['preferred_exercise_types'])}."
 
 				# Check for pet restrictions
 				pet = self.owner.get_pet(task.pet_name)
@@ -761,6 +772,7 @@ class Scheduler:
 					'applied_rules': applied_rules,
 					'confidence_score': confidence_score,
 					'retrieval_sources': retrieval_sources,
+					'guidance_profile': guidance_profile,
 				})
 
 			if not scheduled:
@@ -777,6 +789,7 @@ class Scheduler:
 					'applied_rules': ["unscheduled"],
 					'confidence_score': 0.0,
 					'retrieval_sources': retrieval_sources,
+					'guidance_profile': guidance_profile,
 				})
 
 		# Sort schedule by time
@@ -817,6 +830,7 @@ class Scheduler:
 			confidence = item.get('confidence_score')
 			applied_rules = item.get('applied_rules', [])
 			retrieval_sources = item.get('retrieval_sources', [])
+			guidance_profile = item.get('guidance_profile', {})
 
 			# Show completion status
 			status_indicator = "✅ COMPLETED - " if task.completed else ""
@@ -837,6 +851,12 @@ class Scheduler:
 				explanation += f"   Rules: {', '.join(applied_rules)}\n"
 			if retrieval_sources:
 				explanation += f"   Sources: {', '.join(retrieval_sources)}\n"
+			if guidance_profile.get('energy_level'):
+				explanation += f"   Energy Level: {guidance_profile['energy_level']}\n"
+			if guidance_profile.get('preferred_exercise_types'):
+				explanation += (
+					f"   Exercise Types: {', '.join(guidance_profile['preferred_exercise_types'])}\n"
+				)
 			explanation += "\n"
 
 		# Add summary

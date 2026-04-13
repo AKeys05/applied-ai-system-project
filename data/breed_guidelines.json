@@ -2,6 +2,8 @@
   "species": {
     "dog": {
       "source_id": "species:dog:general",
+      "energy_level": "medium",
+      "preferred_exercise_types": ["walk", "play", "enrichment", "training"],
       "rules": [
         {
           "task_keywords": ["walk", "exercise", "play", "enrichment"],
@@ -16,6 +18,8 @@
     },
     "cat": {
       "source_id": "species:cat:general",
+      "energy_level": "medium",
+      "preferred_exercise_types": ["play", "hunt-game", "enrichment"],
       "rules": [
         {
           "task_keywords": ["play", "enrichment"],
@@ -32,6 +36,9 @@
   "breeds": {
     "border collie": {
       "source_id": "breed:border_collie:v1",
+      "species": "dog",
+      "energy_level": "very_high",
+      "preferred_exercise_types": ["herding games", "running", "training", "agility"],
       "rules": [
         {
           "task_keywords": ["walk", "exercise", "run", "enrichment", "training"],
@@ -46,6 +53,9 @@
     },
     "french bulldog": {
       "source_id": "breed:french_bulldog:v1",
+      "species": "dog",
+      "energy_level": "low_to_medium",
+      "preferred_exercise_types": ["short walk", "light play", "sniff walk"],
       "rules": [
         {
           "task_keywords": ["walk", "exercise", "play"],
@@ -55,6 +65,686 @@
             "end": "11:00"
           },
           "reason": "French Bulldogs should avoid prolonged exertion in hotter midday windows."
+        }
+      ]
+    },
+    "australian shepherd": {
+      "source_id": "breed:australian_shepherd:v1",
+      "species": "dog",
+      "energy_level": "very_high",
+      "preferred_exercise_types": ["running", "agility", "training", "fetch"],
+      "rules": [
+        {
+          "task_keywords": ["walk", "run", "training", "exercise", "enrichment"],
+          "priority_boost": 0.95,
+          "preferred_window": {
+            "start": "06:30",
+            "end": "10:00"
+          },
+          "reason": "Australian Shepherds benefit from challenging, structured morning activity."
+        }
+      ]
+    },
+    "belgian malinois": {
+      "source_id": "breed:belgian_malinois:v1",
+      "species": "dog",
+      "energy_level": "very_high",
+      "preferred_exercise_types": ["training", "running", "obedience", "agility"],
+      "rules": [
+        {
+          "task_keywords": ["training", "exercise", "run", "walk", "enrichment"],
+          "priority_boost": 1.0,
+          "preferred_window": {
+            "start": "06:00",
+            "end": "09:30"
+          },
+          "reason": "Belgian Malinois need high-intensity training and exercise, best started early."
+        }
+      ]
+    },
+    "siberian husky": {
+      "source_id": "breed:siberian_husky:v1",
+      "species": "dog",
+      "energy_level": "high",
+      "preferred_exercise_types": ["running", "long walk", "pull activity"],
+      "rules": [
+        {
+          "task_keywords": ["run", "walk", "exercise", "play"],
+          "priority_boost": 0.9,
+          "preferred_window": {
+            "start": "06:00",
+            "end": "10:00"
+          },
+          "reason": "Huskies typically do best with cooler early-day exercise windows."
+        }
+      ]
+    },
+    "labrador retriever": {
+      "source_id": "breed:labrador_retriever:v1",
+      "species": "dog",
+      "energy_level": "high",
+      "preferred_exercise_types": ["fetch", "swim", "walk", "training"],
+      "rules": [
+        {
+          "task_keywords": ["walk", "play", "exercise", "fetch", "training"],
+          "priority_boost": 0.7,
+          "preferred_window": {
+            "start": "07:00",
+            "end": "10:30"
+          },
+          "reason": "Labradors thrive with frequent exercise and interactive play."
+        }
+      ]
+    },
+    "golden retriever": {
+      "source_id": "breed:golden_retriever:v1",
+      "species": "dog",
+      "energy_level": "high",
+      "preferred_exercise_types": ["walk", "fetch", "swim", "play"],
+      "rules": [
+        {
+          "task_keywords": ["walk", "play", "exercise", "fetch"],
+          "priority_boost": 0.65,
+          "preferred_window": {
+            "start": "07:00",
+            "end": "10:30"
+          },
+          "reason": "Goldens benefit from regular moderate-to-high activity scheduled consistently."
+        }
+      ]
+    },
+    "german shepherd": {
+      "source_id": "breed:german_shepherd:v1",
+      "species": "dog",
+      "energy_level": "high",
+      "preferred_exercise_types": ["training", "walk", "run", "task games"],
+      "rules": [
+        {
+          "task_keywords": ["training", "walk", "exercise", "run"],
+          "priority_boost": 0.8,
+          "preferred_window": {
+            "start": "06:30",
+            "end": "10:00"
+          },
+          "reason": "German Shepherds need both physical and mental work, often best in the morning."
+        }
+      ]
+    },
+    "jack russell terrier": {
+      "source_id": "breed:jack_russell_terrier:v1",
+      "species": "dog",
+      "energy_level": "very_high",
+      "preferred_exercise_types": ["ball chase", "training", "agility", "walk"],
+      "rules": [
+        {
+          "task_keywords": ["play", "exercise", "walk", "training"],
+          "priority_boost": 0.85,
+          "preferred_window": {
+            "start": "06:30",
+            "end": "09:30"
+          },
+          "reason": "Jack Russells are high-drive dogs that benefit from early activity blocks."
+        }
+      ]
+    },
+    "vizsla": {
+      "source_id": "breed:vizsla:v1",
+      "species": "dog",
+      "energy_level": "very_high",
+      "preferred_exercise_types": ["run", "hike", "fetch", "training"],
+      "rules": [
+        {
+          "task_keywords": ["run", "walk", "exercise", "hike"],
+          "priority_boost": 0.9,
+          "preferred_window": {
+            "start": "06:00",
+            "end": "09:30"
+          },
+          "reason": "Vizslas often require substantial daily exercise and structured movement time."
+        }
+      ]
+    },
+    "weimaraner": {
+      "source_id": "breed:weimaraner:v1",
+      "species": "dog",
+      "energy_level": "very_high",
+      "preferred_exercise_types": ["run", "training", "long walk"],
+      "rules": [
+        {
+          "task_keywords": ["run", "walk", "exercise", "training"],
+          "priority_boost": 0.88,
+          "preferred_window": {
+            "start": "06:00",
+            "end": "09:30"
+          },
+          "reason": "Weimaraners typically do best with longer early-day activity sessions."
+        }
+      ]
+    },
+    "poodle": {
+      "source_id": "breed:poodle:v1",
+      "species": "dog",
+      "energy_level": "medium_to_high",
+      "preferred_exercise_types": ["training", "walk", "enrichment games"],
+      "rules": [
+        {
+          "task_keywords": ["training", "walk", "play", "enrichment"],
+          "priority_boost": 0.55,
+          "preferred_window": {
+            "start": "07:00",
+            "end": "10:30"
+          },
+          "reason": "Poodles benefit from balanced physical exercise and mental stimulation routines."
+        }
+      ]
+    },
+    "beagle": {
+      "source_id": "breed:beagle:v1",
+      "species": "dog",
+      "energy_level": "medium_to_high",
+      "preferred_exercise_types": ["sniff walk", "trail game", "play"],
+      "rules": [
+        {
+          "task_keywords": ["walk", "play", "exercise", "sniff"],
+          "priority_boost": 0.5,
+          "preferred_window": {
+            "start": "07:00",
+            "end": "11:00"
+          },
+          "reason": "Beagles often respond well to scent-focused activity scheduled daily."
+        }
+      ]
+    },
+    "boxer": {
+      "source_id": "breed:boxer:v1",
+      "species": "dog",
+      "energy_level": "high",
+      "preferred_exercise_types": ["play", "run", "walk"],
+      "rules": [
+        {
+          "task_keywords": ["walk", "play", "exercise", "run"],
+          "priority_boost": 0.7,
+          "preferred_window": {
+            "start": "06:30",
+            "end": "10:30"
+          },
+          "reason": "Boxers are active and usually benefit from structured activity before midday heat."
+        }
+      ]
+    },
+    "dalmatian": {
+      "source_id": "breed:dalmatian:v1",
+      "species": "dog",
+      "energy_level": "high",
+      "preferred_exercise_types": ["run", "long walk", "play"],
+      "rules": [
+        {
+          "task_keywords": ["run", "walk", "exercise", "play"],
+          "priority_boost": 0.78,
+          "preferred_window": {
+            "start": "06:00",
+            "end": "10:00"
+          },
+          "reason": "Dalmatians often need sustained exercise, typically best planned in cooler windows."
+        }
+      ]
+    },
+    "pembroke welsh corgi": {
+      "source_id": "breed:pembroke_welsh_corgi:v1",
+      "species": "dog",
+      "energy_level": "medium_to_high",
+      "preferred_exercise_types": ["walk", "play", "training"],
+      "rules": [
+        {
+          "task_keywords": ["walk", "play", "exercise", "training"],
+          "priority_boost": 0.52,
+          "preferred_window": {
+            "start": "07:00",
+            "end": "10:30"
+          },
+          "reason": "Corgis benefit from daily moderate activity and short training sessions."
+        }
+      ]
+    },
+    "shiba inu": {
+      "source_id": "breed:shiba_inu:v1",
+      "species": "dog",
+      "energy_level": "medium",
+      "preferred_exercise_types": ["walk", "sniff walk", "play"],
+      "rules": [
+        {
+          "task_keywords": ["walk", "play", "exercise"],
+          "priority_boost": 0.45,
+          "preferred_window": {
+            "start": "07:00",
+            "end": "11:00"
+          },
+          "reason": "Shibas often do well with predictable walk schedules and moderate exertion."
+        }
+      ]
+    },
+    "cocker spaniel": {
+      "source_id": "breed:cocker_spaniel:v1",
+      "species": "dog",
+      "energy_level": "medium",
+      "preferred_exercise_types": ["walk", "play", "retrieval game"],
+      "rules": [
+        {
+          "task_keywords": ["walk", "play", "exercise", "fetch"],
+          "priority_boost": 0.42,
+          "preferred_window": {
+            "start": "07:00",
+            "end": "11:30"
+          },
+          "reason": "Cocker Spaniels generally benefit from moderate daily activity and engagement."
+        }
+      ]
+    },
+    "english bulldog": {
+      "source_id": "breed:english_bulldog:v1",
+      "species": "dog",
+      "energy_level": "low",
+      "preferred_exercise_types": ["short walk", "gentle play"],
+      "rules": [
+        {
+          "task_keywords": ["walk", "exercise", "play"],
+          "priority_boost": 0.2,
+          "preferred_window": {
+            "start": "07:00",
+            "end": "10:30"
+          },
+          "reason": "English Bulldogs usually need short, gentle sessions and heat-aware timing."
+        }
+      ]
+    },
+    "pug": {
+      "source_id": "breed:pug:v1",
+      "species": "dog",
+      "energy_level": "low",
+      "preferred_exercise_types": ["short walk", "indoor play"],
+      "rules": [
+        {
+          "task_keywords": ["walk", "play", "exercise"],
+          "priority_boost": 0.18,
+          "preferred_window": {
+            "start": "07:00",
+            "end": "10:30"
+          },
+          "reason": "Pugs typically need shorter activity periods and cooler-day scheduling."
+        }
+      ]
+    },
+    "chihuahua": {
+      "source_id": "breed:chihuahua:v1",
+      "species": "dog",
+      "energy_level": "low_to_medium",
+      "preferred_exercise_types": ["short walk", "indoor play", "training"],
+      "rules": [
+        {
+          "task_keywords": ["walk", "play", "training"],
+          "priority_boost": 0.3,
+          "preferred_window": {
+            "start": "08:00",
+            "end": "11:30"
+          },
+          "reason": "Chihuahuas often do well with short sessions distributed through the day."
+        }
+      ]
+    },
+    "cavalier king charles spaniel": {
+      "source_id": "breed:cavalier_king_charles_spaniel:v1",
+      "species": "dog",
+      "energy_level": "medium",
+      "preferred_exercise_types": ["walk", "play", "sniff walk"],
+      "rules": [
+        {
+          "task_keywords": ["walk", "play", "exercise"],
+          "priority_boost": 0.35,
+          "preferred_window": {
+            "start": "07:30",
+            "end": "11:30"
+          },
+          "reason": "Cavaliers usually benefit from consistent moderate exercise and social interaction."
+        }
+      ]
+    },
+    "great dane": {
+      "source_id": "breed:great_dane:v1",
+      "species": "dog",
+      "energy_level": "medium",
+      "preferred_exercise_types": ["walk", "gentle play"],
+      "rules": [
+        {
+          "task_keywords": ["walk", "exercise", "play"],
+          "priority_boost": 0.34,
+          "preferred_window": {
+            "start": "07:00",
+            "end": "10:30"
+          },
+          "reason": "Great Danes often need moderate, joint-friendly activity with consistent timing."
+        }
+      ]
+    },
+    "bernese mountain dog": {
+      "source_id": "breed:bernese_mountain_dog:v1",
+      "species": "dog",
+      "energy_level": "medium",
+      "preferred_exercise_types": ["walk", "hike", "pull game"],
+      "rules": [
+        {
+          "task_keywords": ["walk", "exercise", "hike", "play"],
+          "priority_boost": 0.4,
+          "preferred_window": {
+            "start": "06:30",
+            "end": "10:30"
+          },
+          "reason": "Bernese dogs often prefer cooler windows and steady moderate exercise."
+        }
+      ]
+    },
+    "basset hound": {
+      "source_id": "breed:basset_hound:v1",
+      "species": "dog",
+      "energy_level": "low_to_medium",
+      "preferred_exercise_types": ["sniff walk", "short walk"],
+      "rules": [
+        {
+          "task_keywords": ["walk", "exercise", "sniff"],
+          "priority_boost": 0.25,
+          "preferred_window": {
+            "start": "08:00",
+            "end": "11:30"
+          },
+          "reason": "Basset Hounds commonly do well with lower-intensity scent-focused movement."
+        }
+      ]
+    },
+    "greyhound": {
+      "source_id": "breed:greyhound:v1",
+      "species": "dog",
+      "energy_level": "medium",
+      "preferred_exercise_types": ["short sprint", "walk"],
+      "rules": [
+        {
+          "task_keywords": ["walk", "run", "exercise", "sprint"],
+          "priority_boost": 0.45,
+          "preferred_window": {
+            "start": "07:00",
+            "end": "10:30"
+          },
+          "reason": "Greyhounds often benefit from brief higher-intensity bursts plus routine walks."
+        }
+      ]
+    },
+    "rottweiler": {
+      "source_id": "breed:rottweiler:v1",
+      "species": "dog",
+      "energy_level": "medium_to_high",
+      "preferred_exercise_types": ["walk", "training", "strength play"],
+      "rules": [
+        {
+          "task_keywords": ["walk", "training", "exercise", "play"],
+          "priority_boost": 0.6,
+          "preferred_window": {
+            "start": "06:30",
+            "end": "10:30"
+          },
+          "reason": "Rottweilers generally do well with structured exercise and training blocks."
+        }
+      ]
+    },
+    "doberman pinscher": {
+      "source_id": "breed:doberman_pinscher:v1",
+      "species": "dog",
+      "energy_level": "high",
+      "preferred_exercise_types": ["run", "training", "walk"],
+      "rules": [
+        {
+          "task_keywords": ["run", "walk", "training", "exercise"],
+          "priority_boost": 0.75,
+          "preferred_window": {
+            "start": "06:00",
+            "end": "10:00"
+          },
+          "reason": "Dobermans usually benefit from focused exercise and training, often best early."
+        }
+      ]
+    },
+    "newfoundland": {
+      "source_id": "breed:newfoundland:v1",
+      "species": "dog",
+      "energy_level": "medium",
+      "preferred_exercise_types": ["walk", "swim", "gentle play"],
+      "rules": [
+        {
+          "task_keywords": ["walk", "swim", "exercise", "play"],
+          "priority_boost": 0.38,
+          "preferred_window": {
+            "start": "06:30",
+            "end": "10:00"
+          },
+          "reason": "Newfoundlands benefit from moderate, lower-heat activity sessions."
+        }
+      ]
+    },
+    "saint bernard": {
+      "source_id": "breed:saint_bernard:v1",
+      "species": "dog",
+      "energy_level": "low_to_medium",
+      "preferred_exercise_types": ["walk", "gentle play"],
+      "rules": [
+        {
+          "task_keywords": ["walk", "exercise", "play"],
+          "priority_boost": 0.28,
+          "preferred_window": {
+            "start": "07:00",
+            "end": "10:30"
+          },
+          "reason": "Saint Bernards usually need moderate, carefully timed exercise windows."
+        }
+      ]
+    },
+    "bengal": {
+      "source_id": "breed:bengal:v1",
+      "species": "cat",
+      "energy_level": "high",
+      "preferred_exercise_types": ["interactive play", "climbing game", "chase toy"],
+      "rules": [
+        {
+          "task_keywords": ["play", "enrichment", "hunt", "climb"],
+          "priority_boost": 0.75,
+          "preferred_window": {
+            "start": "07:00",
+            "end": "10:30"
+          },
+          "reason": "Bengals generally require frequent high-engagement play and enrichment sessions."
+        }
+      ]
+    },
+    "abyssinian": {
+      "source_id": "breed:abyssinian:v1",
+      "species": "cat",
+      "energy_level": "high",
+      "preferred_exercise_types": ["interactive play", "puzzle feeder", "climb"],
+      "rules": [
+        {
+          "task_keywords": ["play", "enrichment", "puzzle"],
+          "priority_boost": 0.68,
+          "preferred_window": {
+            "start": "07:30",
+            "end": "11:00"
+          },
+          "reason": "Abyssinians thrive with active, mentally engaging routines."
+        }
+      ]
+    },
+    "siamese": {
+      "source_id": "breed:siamese:v1",
+      "species": "cat",
+      "energy_level": "medium_to_high",
+      "preferred_exercise_types": ["interactive play", "training game", "puzzle"],
+      "rules": [
+        {
+          "task_keywords": ["play", "enrichment", "training"],
+          "priority_boost": 0.6,
+          "preferred_window": {
+            "start": "08:00",
+            "end": "11:00"
+          },
+          "reason": "Siamese cats often benefit from social play and cognitive enrichment tasks."
+        }
+      ]
+    },
+    "oriental shorthair": {
+      "source_id": "breed:oriental_shorthair:v1",
+      "species": "cat",
+      "energy_level": "medium_to_high",
+      "preferred_exercise_types": ["play", "climbing", "chase toy"],
+      "rules": [
+        {
+          "task_keywords": ["play", "enrichment", "climb"],
+          "priority_boost": 0.58,
+          "preferred_window": {
+            "start": "08:00",
+            "end": "11:00"
+          },
+          "reason": "Oriental Shorthairs often do well with consistent interactive play periods."
+        }
+      ]
+    },
+    "maine coon": {
+      "source_id": "breed:maine_coon:v1",
+      "species": "cat",
+      "energy_level": "medium",
+      "preferred_exercise_types": ["play", "climb", "wand toy"],
+      "rules": [
+        {
+          "task_keywords": ["play", "enrichment", "exercise"],
+          "priority_boost": 0.45,
+          "preferred_window": {
+            "start": "08:00",
+            "end": "11:30"
+          },
+          "reason": "Maine Coons typically benefit from moderate daily play and climbing opportunities."
+        }
+      ]
+    },
+    "ragdoll": {
+      "source_id": "breed:ragdoll:v1",
+      "species": "cat",
+      "energy_level": "low_to_medium",
+      "preferred_exercise_types": ["gentle play", "puzzle feeder"],
+      "rules": [
+        {
+          "task_keywords": ["play", "enrichment", "puzzle"],
+          "priority_boost": 0.3,
+          "preferred_window": {
+            "start": "08:30",
+            "end": "11:30"
+          },
+          "reason": "Ragdolls usually prefer shorter, gentler enrichment sessions."
+        }
+      ]
+    },
+    "persian": {
+      "source_id": "breed:persian:v1",
+      "species": "cat",
+      "energy_level": "low",
+      "preferred_exercise_types": ["gentle play", "short interactive toy"],
+      "rules": [
+        {
+          "task_keywords": ["play", "enrichment"],
+          "priority_boost": 0.2,
+          "preferred_window": {
+            "start": "09:00",
+            "end": "12:00"
+          },
+          "reason": "Persians often need low-intensity but consistent enrichment activity."
+        }
+      ]
+    },
+    "british shorthair": {
+      "source_id": "breed:british_shorthair:v1",
+      "species": "cat",
+      "energy_level": "low_to_medium",
+      "preferred_exercise_types": ["play", "puzzle feeder"],
+      "rules": [
+        {
+          "task_keywords": ["play", "enrichment", "puzzle"],
+          "priority_boost": 0.28,
+          "preferred_window": {
+            "start": "08:30",
+            "end": "12:00"
+          },
+          "reason": "British Shorthairs often benefit from moderate structured enrichment sessions."
+        }
+      ]
+    },
+    "scottish fold": {
+      "source_id": "breed:scottish_fold:v1",
+      "species": "cat",
+      "energy_level": "low_to_medium",
+      "preferred_exercise_types": ["gentle play", "wand toy"],
+      "rules": [
+        {
+          "task_keywords": ["play", "enrichment"],
+          "priority_boost": 0.25,
+          "preferred_window": {
+            "start": "09:00",
+            "end": "12:00"
+          },
+          "reason": "Scottish Folds often do well with low-impact daily enrichment routines."
+        }
+      ]
+    },
+    "sphynx": {
+      "source_id": "breed:sphynx:v1",
+      "species": "cat",
+      "energy_level": "medium_to_high",
+      "preferred_exercise_types": ["interactive play", "climb", "chase toy"],
+      "rules": [
+        {
+          "task_keywords": ["play", "enrichment", "exercise"],
+          "priority_boost": 0.5,
+          "preferred_window": {
+            "start": "08:00",
+            "end": "11:30"
+          },
+          "reason": "Sphynx cats are typically active and benefit from frequent interaction."
+        }
+      ]
+    },
+    "russian blue": {
+      "source_id": "breed:russian_blue:v1",
+      "species": "cat",
+      "energy_level": "medium",
+      "preferred_exercise_types": ["play", "puzzle", "short chase"],
+      "rules": [
+        {
+          "task_keywords": ["play", "enrichment", "puzzle"],
+          "priority_boost": 0.35,
+          "preferred_window": {
+            "start": "08:30",
+            "end": "11:30"
+          },
+          "reason": "Russian Blues often respond well to consistent routine and moderate enrichment."
+        }
+      ]
+    },
+    "burmese": {
+      "source_id": "breed:burmese:v1",
+      "species": "cat",
+      "energy_level": "medium_to_high",
+      "preferred_exercise_types": ["interactive play", "training game", "chase"],
+      "rules": [
+        {
+          "task_keywords": ["play", "enrichment", "training"],
+          "priority_boost": 0.52,
+          "preferred_window": {
+            "start": "08:00",
+            "end": "11:00"
+          },
+          "reason": "Burmese cats are typically social and active, benefiting from scheduled interaction."
         }
       ]
     }
