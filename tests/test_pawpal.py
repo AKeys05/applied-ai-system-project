@@ -50,9 +50,9 @@ def test_generate_tasks_from_profile_creates_expected_daily_tasks():
 	all_tasks = owner.get_all_tasks()
 	assert len(all_tasks) == 7
 	assert all(task.task_source == "profile_generated" for task in all_tasks)
-	assert sum(1 for t in all_tasks if t.title.startswith("Walk")) == 2
-	assert sum(1 for t in all_tasks if t.title.startswith("Meal")) == 2
-	assert any(t.title == "Medication" for t in all_tasks)
+	assert sum(1 for t in all_tasks if t.title.startswith("Exercise - Walk")) == 2
+	assert sum(1 for t in all_tasks if t.title.startswith("Feeding - Meal")) == 2
+	assert any(t.title == "Health - Medication" for t in all_tasks)
 
 
 def test_generate_tasks_from_profile_replaces_previous_generated_tasks():
@@ -74,7 +74,59 @@ def test_generate_tasks_from_profile_replaces_previous_generated_tasks():
 
 	all_tasks = owner.get_all_tasks()
 	assert len(all_tasks) == 4
-	assert sum(1 for t in all_tasks if t.title.startswith("Walk")) == 2
+	assert sum(1 for t in all_tasks if t.title.startswith("Exercise - Walk")) == 2
+
+
+def test_skipped_task_is_omitted_from_schedule():
+	"""Skipped tasks in generated plan review should not be scheduled."""
+	owner = Owner("Jordan")
+	dog = Pet(name="Mochi", species="Dog", breed="Border Collie")
+	owner.add_pet(dog)
+
+	profile = RoutineProfile(walks_per_day=1, meals_per_day=1, play_sessions_per_day=0)
+	success, _, _ = owner.generate_tasks_from_profile("Mochi", profile)
+	assert success == True
+
+	meal_task = next(t for t in owner.get_all_tasks() if t.title.startswith("Feeding - Meal"))
+	owner.edit_task(meal_task.id, skipped=True)
+
+	scheduler = Scheduler(owner)
+	schedule = scheduler.generate_schedule()
+	scheduled_titles = [item['task'].title for item in schedule]
+	assert not any(title.startswith("Feeding - Meal") for title in scheduled_titles)
+
+
+def test_locked_preferred_time_unschedules_when_slot_conflicts():
+	"""Locked preferred-time tasks should not fallback to alternate slots when blocked."""
+	owner = Owner("Jordan")
+	dog = Pet(name="Mochi", species="Dog", breed="")
+	owner.add_pet(dog)
+
+	blocker = Task(
+		title="Manual Blocker",
+		duration=30,
+		priority=Priority.HIGH,
+		pet_name="Mochi",
+		preferred_time=time(8, 0),
+	)
+	locked = Task(
+		title="Exercise - Walk",
+		duration=30,
+		priority=Priority.MEDIUM,
+		pet_name="Mochi",
+		preferred_time=time(8, 0),
+		locked_preferred_time=True,
+		task_source="profile_generated",
+	)
+
+	assert owner.add_task("Mochi", blocker)
+	assert owner.add_task("Mochi", locked)
+
+	scheduler = Scheduler(owner)
+	schedule = scheduler.generate_schedule()
+	locked_item = next(item for item in schedule if item['task'].title == "Exercise - Walk")
+	assert locked_item['time'] is None
+	assert "locked_preferred_time" in locked_item['applied_rules']
 
 
 def test_structured_constraint_respected_when_scheduling():

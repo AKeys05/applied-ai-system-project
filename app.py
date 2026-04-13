@@ -264,6 +264,53 @@ else:
             else:
                 st.error(f"❌ Could not generate routine tasks: {error}")
 
+    summary = getattr(owner, "last_generation_summary", {})
+    if summary and summary.get("pet_name") == routine_pet_name:
+        st.markdown("**Last Generation Summary**")
+        s1, s2 = st.columns(2)
+        with s1:
+            st.metric("Created", summary.get("created_count", 0))
+        with s2:
+            st.metric("Removed", summary.get("removed_count", 0))
+
+    generated_tasks = [
+        t for t in owner.get_tasks_for_pet(routine_pet_name)
+        if t.task_source == "profile_generated"
+    ]
+    if generated_tasks:
+        st.markdown("#### Review Generated Tasks")
+        st.caption("Adjust generated tasks before schedule generation. You can skip, set preferred time, and lock time.")
+        for task in generated_tasks:
+            c1, c2, c3 = st.columns([3, 1, 2])
+            with c1:
+                status = "⏭️ Skipped" if task.skipped else "✅ Included"
+                lock_status = "🔒 Locked" if task.locked_preferred_time else "🔓 Flexible"
+                preferred_label = task.preferred_time.strftime('%I:%M %p') if task.preferred_time else "-"
+                st.caption(f"{task.title} | {status} | {lock_status} | preferred: {preferred_label}")
+            with c2:
+                if task.skipped:
+                    if st.button("Unskip", key=f"unskip_{task.id}"):
+                        owner.edit_task(task.id, skipped=False)
+                        st.rerun()
+                else:
+                    if st.button("Skip", key=f"skip_{task.id}"):
+                        owner.edit_task(task.id, skipped=True)
+                        st.rerun()
+            with c3:
+                lock_time = st.time_input(
+                    "Preferred",
+                    value=task.preferred_time or datetime.time(8, 0),
+                    key=f"lock_time_{task.id}",
+                )
+                if task.locked_preferred_time:
+                    if st.button("Unlock", key=f"unlock_{task.id}"):
+                        owner.edit_task(task.id, locked_preferred_time=False)
+                        st.rerun()
+                else:
+                    if st.button("Set + Lock", key=f"lock_{task.id}"):
+                        owner.edit_task(task.id, preferred_time=lock_time, locked_preferred_time=True)
+                        st.rerun()
+
     st.divider()
     st.markdown("#### Manual Task Entry (Advanced)")
 

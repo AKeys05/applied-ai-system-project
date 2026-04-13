@@ -104,6 +104,8 @@ class Task:
 	parent_task_id: Optional[str] = None  # Links to the original recurring task template
 	retrieval_sources: List[str] = field(default_factory=list)
 	task_source: str = "manual"
+	skipped: bool = False
+	locked_preferred_time: bool = False
 
 	def validate_basic_fields(self) -> tuple[bool, Optional[str]]:
 		"""Validate required fields and basic bounds for safe scheduling."""
@@ -306,6 +308,8 @@ class Task:
 			parent_task_id=self.parent_task_id or self.id,  # Link to original
 			retrieval_sources=list(self.retrieval_sources),
 			task_source=self.task_source,
+			skipped=self.skipped,
+			locked_preferred_time=self.locked_preferred_time,
 		)
 
 		return new_task
@@ -359,6 +363,7 @@ class Owner:
 		self.constraints: Dict[str, List[str]] = {}  # pet_name -> list of constraint descriptions
 		self.timezone: str = "Local"
 		self.availability_windows: List[tuple[time, time]] = []
+		self.last_generation_summary: Dict[str, Any] = {}
 
 	def set_timezone(self, timezone: str) -> bool:
 		"""Set owner timezone string, returns True when accepted."""
@@ -395,18 +400,21 @@ class Owner:
 			constraint_text = f"before {end.strftime('%H:%M')}"
 		return constraint_text, constraint
 
-	def _remove_generated_tasks_for_pet(self, pet_name: str) -> None:
+	def _remove_generated_tasks_for_pet(self, pet_name: str) -> List[str]:
 		"""Remove previously generated profile tasks for a pet before regeneration."""
 		pet = self.get_pet(pet_name)
 		if not pet:
-			return
+			return []
+		removed_titles: List[str] = []
 		remaining_tasks = []
 		for task in pet.tasks:
 			if task.task_source == "profile_generated":
+				removed_titles.append(task.title)
 				self.task_index.pop(task.id, None)
 			else:
 				remaining_tasks.append(task)
 		pet.tasks = remaining_tasks
+		return removed_titles
 
 	def generate_tasks_from_profile(self, pet_name: str, profile: RoutineProfile, replace_existing: bool = True) -> tuple[bool, int, Optional[str]]:
 		"""Generate daily routine tasks from profile preferences.
@@ -422,14 +430,17 @@ class Owner:
 			return (False, 0, error)
 
 		if replace_existing:
-			self._remove_generated_tasks_for_pet(pet_name)
+			removed_titles = self._remove_generated_tasks_for_pet(pet_name)
+		else:
+			removed_titles = []
 
 		created_count = 0
+		created_titles: List[str] = []
 		today = date.today()
 
 		# Walk tasks
 		for idx in range(profile.walks_per_day):
-			title = "Walk" if profile.walks_per_day == 1 else f"Walk #{idx + 1}"
+			title = "Exercise - Walk" if profile.walks_per_day == 1 else f"Exercise - Walk #{idx + 1}"
 			time_constraint, schedule_constraint = self._build_constraint_from_window(
 				profile.walk_window_start,
 				profile.walk_window_end,
@@ -447,10 +458,11 @@ class Owner:
 			)
 			if self.add_task(pet_name, task):
 				created_count += 1
+				created_titles.append(task.title)
 
 		# Meal tasks
 		for idx in range(profile.meals_per_day):
-			title = "Meal" if profile.meals_per_day == 1 else f"Meal #{idx + 1}"
+			title = "Feeding - Meal" if profile.meals_per_day == 1 else f"Feeding - Meal #{idx + 1}"
 			time_constraint, schedule_constraint = self._build_constraint_from_window(
 				profile.meal_window_start,
 				profile.meal_window_end,
@@ -468,10 +480,11 @@ class Owner:
 			)
 			if self.add_task(pet_name, task):
 				created_count += 1
+				created_titles.append(task.title)
 
 		# Play/enrichment tasks
 		for idx in range(profile.play_sessions_per_day):
-			title = "Play / Enrichment" if profile.play_sessions_per_day == 1 else f"Play / Enrichment #{idx + 1}"
+			title = "Enrichment - Play Session" if profile.play_sessions_per_day == 1 else f"Enrichment - Play Session #{idx + 1}"
 			time_constraint, schedule_constraint = self._build_constraint_from_window(
 				profile.play_window_start,
 				profile.play_window_end,
@@ -489,11 +502,12 @@ class Owner:
 			)
 			if self.add_task(pet_name, task):
 				created_count += 1
+				created_titles.append(task.title)
 
 		# Medication tasks
 		for med_time in profile.medication_times:
 			task = Task(
-				title="Medication",
+				title="Health - Medication",
 				duration=10,
 				priority=Priority.HIGH,
 				pet_name=pet_name,
@@ -504,10 +518,11 @@ class Owner:
 			)
 			if self.add_task(pet_name, task):
 				created_count += 1
+				created_titles.append(task.title)
 
 		# Grooming tasks (weekly cadence)
 		for idx in range(profile.grooming_sessions_per_week):
-			title = "Grooming" if profile.grooming_sessions_per_week == 1 else f"Grooming #{idx + 1}"
+			title = "Care - Grooming" if profile.grooming_sessions_per_week == 1 else f"Care - Grooming #{idx + 1}"
 			task = Task(
 				title=title,
 				duration=25,
@@ -519,6 +534,15 @@ class Owner:
 			)
 			if self.add_task(pet_name, task):
 				created_count += 1
+				created_titles.append(task.title)
+
+		self.last_generation_summary = {
+			'pet_name': pet_name,
+			'created_count': created_count,
+			'removed_count': len(removed_titles),
+			'created_titles': created_titles,
+			'removed_titles': removed_titles,
+		}
 
 		return (True, created_count, None)
 
@@ -793,6 +817,9 @@ class Scheduler:
 			if not t.completed or (t.scheduled_date == reference_date)
 		]
 
+		# Skip tasks user excluded in generated-plan review.
+		tasks = [t for t in tasks if not t.skipped]
+
 		if not tasks:
 			return self.current_schedule
 
@@ -911,6 +938,22 @@ class Scheduler:
 							scheduled_time = task.preferred_time
 							reason = f"Scheduled at preferred time {task.preferred_time.strftime('%I:%M %p')}"
 							applied_rules.append("preferred_time")
+
+			# If task is locked to preferred time and could not be placed there, do not fallback.
+			if task.locked_preferred_time and not scheduled:
+				reason = "Could not schedule locked task at preferred time"
+				self.guardrail_warnings.append(f"Locked task '{task.title}' could not be scheduled at preferred time")
+				self.current_schedule.append({
+					'task': task,
+					'time': None,
+					'pet_name': task.pet_name,
+					'reason': reason,
+					'applied_rules': ["locked_preferred_time", "unscheduled"],
+					'confidence_score': 0.0,
+					'retrieval_sources': retrieval_sources,
+					'guidance_profile': guidance_profile,
+				})
+				continue
 
 			# Fallback: Try constraint-based or any available slot
 			if not scheduled:
