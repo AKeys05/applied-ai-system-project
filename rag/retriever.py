@@ -40,6 +40,7 @@ class BreedGuidanceRetriever:
             for rule in self._matching_rules(species_entry.get("rules", []), task_title):
                 result = {
                     "source_id": species_entry.get("source_id", f"species:{species_key}:general"),
+                    "source_type": "species",
                     "priority_boost": float(rule.get("priority_boost", 0.0)),
                     "reason": rule.get("reason", "Species guidance applied."),
                     "energy_level": species_entry.get("energy_level"),
@@ -56,6 +57,7 @@ class BreedGuidanceRetriever:
             for rule in self._matching_rules(breed_entry.get("rules", []), task_title):
                 result = {
                     "source_id": breed_entry.get("source_id", f"breed:{breed_key}:general"),
+                    "source_type": "breed",
                     "priority_boost": float(rule.get("priority_boost", 0.0)),
                     "reason": rule.get("reason", "Breed guidance applied."),
                     "energy_level": breed_entry.get("energy_level"),

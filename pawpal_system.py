@@ -482,6 +482,8 @@ class Scheduler:
 		self.guardrail_warnings: List[str] = []
 		self.guidance_service = BreedGuidanceService()
 		self.task_guidance: Dict[str, Dict[str, Any]] = {}
+		self.rag_confidence_threshold: float = 0.5
+		self.rag_enabled_current: bool = True
 
 	def _parse_time_constraint(self, constraint: str) -> tuple[Optional[time], Optional[time]]:
 		"""Parse time constraint string into time bounds.
@@ -523,7 +525,9 @@ class Scheduler:
 			return legacy_earliest, legacy_latest
 
 		guidance = self.task_guidance.get(task.id, {})
-		return guidance.get('earliest_start'), guidance.get('latest_end')
+		if self.rag_enabled_current and guidance.get('rag_active'):
+			return guidance.get('earliest_start'), guidance.get('latest_end')
+		return (None, None)
 
 	def _within_owner_availability(self, start_minutes: int, duration: int) -> bool:
 		"""Check whether a task fits in at least one owner availability window."""
@@ -574,7 +578,12 @@ class Scheduler:
 
 		return (monday, sunday)
 
-	def generate_schedule(self, pet_name: Optional[str] = None, target_date: Optional[date] = None) -> List[Dict]:
+	def generate_schedule(
+		self,
+		pet_name: Optional[str] = None,
+		target_date: Optional[date] = None,
+		enable_rag: bool = True,
+	) -> List[Dict]:
 		"""Generate a schedule for all tasks (or tasks for specific pet).
 
 		Args:
@@ -588,6 +597,7 @@ class Scheduler:
 		self.guardrail_warnings = []
 		self.schedule_confidence = 0.0
 		self.task_guidance = {}
+		self.rag_enabled_current = enable_rag
 
 		# Get tasks to schedule
 		if pet_name:
@@ -614,9 +624,31 @@ class Scheduler:
 
 		# Build RAG guidance context for each task.
 		for task in tasks:
-			pet = self.owner.get_pet(task.pet_name)
-			if pet:
-				self.task_guidance[task.id] = self.guidance_service.get_task_guidance(pet, task)
+			if enable_rag:
+				pet = self.owner.get_pet(task.pet_name)
+				if pet:
+					guidance = self.guidance_service.get_task_guidance(pet, task)
+					rag_active = guidance.get('retrieval_confidence', 0.0) >= self.rag_confidence_threshold
+					guidance['rag_active'] = rag_active
+					if not rag_active:
+						guidance['priority_boost'] = 0.0
+						guidance['earliest_start'] = None
+						guidance['latest_end'] = None
+					self.task_guidance[task.id] = guidance
+				else:
+					self.task_guidance[task.id] = {
+						'priority_boost': 0.0,
+						'earliest_start': None,
+						'latest_end': None,
+						'sources': [],
+						'reasons': [],
+						'preferred_exercise_types': [],
+						'energy_levels': [],
+						'energy_level': None,
+						'retrieval_confidence': 0.0,
+						'rag_active': False,
+						'has_guidance': False,
+					}
 			else:
 				self.task_guidance[task.id] = {
 					'priority_boost': 0.0,
@@ -627,6 +659,8 @@ class Scheduler:
 					'preferred_exercise_types': [],
 					'energy_levels': [],
 					'energy_level': None,
+					'retrieval_confidence': 0.0,
+					'rag_active': False,
 					'has_guidance': False,
 				}
 
@@ -659,18 +693,28 @@ class Scheduler:
 			applied_rules: List[str] = []
 			confidence_score = 1.0
 			guidance = self.task_guidance.get(task.id, {})
+			retrieval_confidence = float(guidance.get('retrieval_confidence', 0.0))
+			rag_is_active = bool(enable_rag and guidance.get('rag_active'))
 			retrieval_sources = list(task.retrieval_sources)
 			guidance_profile = {
 				'energy_level': guidance.get('energy_level'),
 				'preferred_exercise_types': list(guidance.get('preferred_exercise_types', [])),
+				'retrieval_confidence': retrieval_confidence,
+				'rag_active': rag_is_active,
 			}
-			for source in guidance.get('sources', []):
-				if source not in retrieval_sources:
-					retrieval_sources.append(source)
+			if rag_is_active:
+				for source in guidance.get('sources', []):
+					if source not in retrieval_sources:
+						retrieval_sources.append(source)
 
-			if guidance.get('has_guidance'):
+			if rag_is_active:
 				applied_rules.append("rag_guidance")
 				confidence_score -= 0.03
+			elif enable_rag and guidance.get('has_guidance'):
+				applied_rules.append("rag_fallback_low_confidence")
+				self.guardrail_warnings.append(
+					f"RAG fallback for task '{task.title}' (retrieval confidence {retrieval_confidence:.2f})"
+				)
 
 			if task.preferred_time:
 				preferred_minutes = self._time_to_minutes(task.preferred_time)
@@ -740,11 +784,11 @@ class Scheduler:
 					applied_rules.append("time_constraint")
 					confidence_score -= 0.05
 
-				if guidance.get('reasons'):
+				if rag_is_active and guidance.get('reasons'):
 					reason += f". Guidance: {'; '.join(guidance['reasons'])}"
-				if guidance.get('energy_level'):
+				if rag_is_active and guidance.get('energy_level'):
 					reason += f" Energy profile: {guidance['energy_level']}."
-				if guidance.get('preferred_exercise_types'):
+				if rag_is_active and guidance.get('preferred_exercise_types'):
 					reason += f" Suggested exercise types: {', '.join(guidance['preferred_exercise_types'])}."
 
 				# Check for pet restrictions
@@ -778,7 +822,7 @@ class Scheduler:
 			if not scheduled:
 				# Couldn't schedule this task
 				reason = "Could not schedule due to time constraints, owner availability, or conflicts"
-				if guidance.get('reasons'):
+				if rag_is_active and guidance.get('reasons'):
 					reason += f". Guidance considered: {'; '.join(guidance['reasons'])}"
 				self.guardrail_warnings.append(f"Task '{task.title}' is unscheduled")
 				self.current_schedule.append({
@@ -895,6 +939,7 @@ class Scheduler:
 			'unscheduled_tasks': unscheduled,
 			'overall_confidence': self.schedule_confidence,
 			'low_confidence_tasks': low_confidence_tasks,
+			'rag_fallback_count': len([w for w in self.guardrail_warnings if "RAG fallback" in w]),
 			'guardrail_warnings': list(self.guardrail_warnings),
 		}
 

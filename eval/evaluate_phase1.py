@@ -80,19 +80,45 @@ def signature(schedule):
 
 
 def run_consistency_check(name: str, scheduler: Scheduler) -> dict:
-    first = scheduler.generate_schedule()
+    first = scheduler.generate_schedule(enable_rag=True)
     first_sig = signature(first)
-    second = scheduler.generate_schedule()
+    second = scheduler.generate_schedule(enable_rag=True)
     second_sig = signature(second)
 
-    report = scheduler.get_reliability_report()
+    rag_schedule = scheduler.generate_schedule(enable_rag=True)
+    rag_sig = signature(rag_schedule)
+    rag_report = scheduler.get_reliability_report()
+    _, rag_violations = scheduler.validate_schedule(rag_schedule)
+
+    baseline_schedule = scheduler.generate_schedule(enable_rag=False)
+    baseline_sig = signature(baseline_schedule)
+
+    changed_count = 0
+    baseline_map = {item[0]: item[1] for item in baseline_sig}
+    for title, scheduled_time, _ in rag_sig:
+        if baseline_map.get(title) != scheduled_time:
+            changed_count += 1
+
+    citation_coverage = 0.0
+    if rag_schedule:
+        with_sources = sum(1 for item in rag_schedule if len(item.get("retrieval_sources", [])) > 0)
+        citation_coverage = with_sources / len(rag_schedule)
+
+    constraint_violations = sum(1 for v in rag_violations if "violates constraint" in v)
+    constraint_respect = 1.0
+    if rag_schedule:
+        constraint_respect = max(0.0, 1.0 - (constraint_violations / len(rag_schedule)))
+
     return {
         "name": name,
         "consistent": first_sig == second_sig,
-        "scheduled": report["scheduled_tasks"],
-        "total": report["total_tasks"],
-        "overall_confidence": report["overall_confidence"],
-        "warnings": len(report["guardrail_warnings"]),
+        "scheduled": rag_report["scheduled_tasks"],
+        "total": rag_report["total_tasks"],
+        "overall_confidence": rag_report["overall_confidence"],
+        "warnings": len(rag_report["guardrail_warnings"]),
+        "citation_coverage": round(citation_coverage, 2),
+        "constraint_respect": round(constraint_respect, 2),
+        "rag_impact_tasks": changed_count,
     }
 
 
@@ -115,7 +141,10 @@ def main():
             f"[{status}] {result['name']} | "
             f"scheduled {result['scheduled']}/{result['total']} | "
             f"confidence {result['overall_confidence']:.2f} | "
-            f"warnings {result['warnings']}"
+            f"warnings {result['warnings']} | "
+            f"citation_coverage {result['citation_coverage']:.2f} | "
+            f"constraint_respect {result['constraint_respect']:.2f} | "
+            f"rag_impact_tasks {result['rag_impact_tasks']}"
         )
 
     if failures > 0:

@@ -51,6 +51,7 @@ class BreedGuidanceService:
         reasons = []
         exercise_types = []
         energy_levels = []
+        retrieval_confidence = 0.0
 
         for entry in entries:
             priority_boost += float(entry.get("priority_boost", 0.0))
@@ -73,6 +74,12 @@ class BreedGuidanceService:
             if energy and energy not in energy_levels:
                 energy_levels.append(energy)
 
+            source_type = entry.get("source_type")
+            if source_type == "breed":
+                retrieval_confidence += 0.7
+            elif source_type == "species":
+                retrieval_confidence += 0.35
+
         primary_energy_level = None
         if energy_levels:
             primary_energy_level = max(
@@ -89,5 +96,6 @@ class BreedGuidanceService:
             "preferred_exercise_types": exercise_types,
             "energy_levels": energy_levels,
             "energy_level": primary_energy_level,
+            "retrieval_confidence": min(1.0, round(retrieval_confidence, 2)),
             "has_guidance": len(entries) > 0,
         }

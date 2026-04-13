@@ -316,6 +316,79 @@ def test_rag_guidance_shapes_exercise_task_scheduling():
 	assert enrichment_item['time'] >= time(6, 30)
 
 
+def test_rag_low_confidence_falls_back_to_deterministic_rules():
+	"""Species-only matches should fall back when below RAG confidence threshold."""
+	owner = Owner("Jordan")
+	dog = Pet(name="Rex", species="Dog", breed="")
+	owner.add_pet(dog)
+
+	task = Task(
+		title="Morning Walk",
+		duration=30,
+		priority=Priority.MEDIUM,
+		pet_name="Rex",
+	)
+	assert owner.add_task("Rex", task) == True
+
+	scheduler = Scheduler(owner)
+	scheduler.rag_confidence_threshold = 0.5
+	schedule = scheduler.generate_schedule(enable_rag=True)
+
+	assert len(schedule) == 1
+	item = schedule[0]
+	assert "rag_guidance" not in item['applied_rules']
+	assert "rag_fallback_low_confidence" in item['applied_rules']
+	assert item['guidance_profile']['rag_active'] == False
+
+
+def test_hard_time_constraint_takes_precedence_over_rag_window():
+	"""Explicit hard constraints should override any guidance-derived preferred windows."""
+	owner = Owner("Jordan")
+	dog = Pet(name="Poppy", species="Dog", breed="French Bulldog")
+	owner.add_pet(dog)
+
+	# RAG suggests morning windows for exercise, but hard user constraint forces afternoon.
+	task = Task(
+		title="Walk",
+		duration=30,
+		priority=Priority.MEDIUM,
+		pet_name="Poppy",
+		time_constraint="after 12:00",
+	)
+	assert owner.add_task("Poppy", task) == True
+
+	scheduler = Scheduler(owner)
+	schedule = scheduler.generate_schedule(enable_rag=True)
+
+	assert len(schedule) == 1
+	assert schedule[0]['time'] is not None
+	assert schedule[0]['time'] >= time(12, 0)
+
+
+def test_generate_schedule_can_disable_rag_for_baseline():
+	"""Scheduler should support deterministic baseline mode with RAG disabled."""
+	owner = Owner("Jordan")
+	dog = Pet(name="Mochi", species="Dog", breed="Border Collie")
+	owner.add_pet(dog)
+
+	task = Task(
+		title="Enrichment Training",
+		duration=30,
+		priority=Priority.MEDIUM,
+		pet_name="Mochi",
+	)
+	assert owner.add_task("Mochi", task) == True
+
+	scheduler = Scheduler(owner)
+	rag_schedule = scheduler.generate_schedule(enable_rag=True)
+	baseline_schedule = scheduler.generate_schedule(enable_rag=False)
+
+	assert len(rag_schedule) == 1
+	assert len(baseline_schedule) == 1
+	assert "rag_guidance" in rag_schedule[0]['applied_rules']
+	assert "rag_guidance" not in baseline_schedule[0]['applied_rules']
+
+
 def test_task_completion_status_changes():
 	"""Test that task completion status can be changed."""
 	# Create an owner and pet
