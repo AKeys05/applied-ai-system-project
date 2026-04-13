@@ -1149,13 +1149,37 @@ class Scheduler:
 		]
 
 		unscheduled = [item['task'].title for item in self.current_schedule if item['time'] is None]
+		scheduled_count = len([item for item in self.current_schedule if item['time'] is not None])
+		total_count = len(self.current_schedule)
+		scheduled_ratio = (scheduled_count / total_count) if total_count > 0 else 0.0
+
+		with_sources = sum(1 for item in self.current_schedule if len(item.get('retrieval_sources', [])) > 0)
+		citation_coverage = (with_sources / total_count) if total_count > 0 else 0.0
+
+		raw_constraint_violations = []
+		if self.current_schedule:
+			_, raw_constraint_violations = self.validate_schedule(self.current_schedule)
+		constraint_violations = sum(1 for v in raw_constraint_violations if "violates constraint" in v)
+		constraint_respect = 1.0
+		if total_count > 0:
+			constraint_respect = max(0.0, 1.0 - (constraint_violations / total_count))
+
+		rag_active_tasks = sum(
+			1
+			for item in self.current_schedule
+			if bool(item.get('guidance_profile', {}).get('rag_active'))
+		)
 
 		return {
-			'total_tasks': len(self.current_schedule),
-			'scheduled_tasks': len([item for item in self.current_schedule if item['time'] is not None]),
+			'total_tasks': total_count,
+			'scheduled_tasks': scheduled_count,
 			'unscheduled_tasks': unscheduled,
+			'scheduled_ratio': round(scheduled_ratio, 2),
 			'overall_confidence': self.schedule_confidence,
 			'low_confidence_tasks': low_confidence_tasks,
+			'citation_coverage': round(citation_coverage, 2),
+			'constraint_respect': round(constraint_respect, 2),
+			'rag_active_tasks': rag_active_tasks,
 			'rag_fallback_count': len([w for w in self.guardrail_warnings if "RAG fallback" in w]),
 			'guardrail_warnings': list(self.guardrail_warnings),
 		}

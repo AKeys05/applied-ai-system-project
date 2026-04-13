@@ -4,7 +4,7 @@ from datetime import time
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
-from pawpal_system import Owner, Pet, Task, Priority, Scheduler
+from pawpal_system import Owner, Pet, Task, Priority, RoutineProfile, Scheduler
 
 
 def scenario_border_collie() -> Scheduler:
@@ -75,6 +75,32 @@ def scenario_multi_pet_collision() -> Scheduler:
     return Scheduler(owner)
 
 
+def scenario_profile_generated_border_collie() -> Scheduler:
+    owner = Owner("Jordan")
+    owner.set_timezone("US/Pacific")
+    owner.add_availability_window(time(7, 0), time(12, 0))
+
+    dog = Pet(name="Mochi", species="Dog", breed="Border Collie", activity_level="high")
+    owner.add_pet(dog)
+
+    profile = RoutineProfile(
+        walks_per_day=1,
+        meals_per_day=2,
+        play_sessions_per_day=1,
+        walk_window_start=time(6, 30),
+        walk_window_end=time(9, 30),
+        meal_window_start=time(7, 0),
+        meal_window_end=time(19, 0),
+        play_window_start=time(8, 0),
+        play_window_end=time(20, 0),
+    )
+    success, _created, error = owner.generate_tasks_from_profile("Mochi", profile)
+    if not success:
+        raise RuntimeError(f"Failed to generate profile tasks for evaluation: {error}")
+
+    return Scheduler(owner)
+
+
 def signature(schedule):
     return [(item["task"].title, item["time"], item.get("confidence_score", 0.0)) for item in schedule]
 
@@ -88,10 +114,10 @@ def run_consistency_check(name: str, scheduler: Scheduler) -> dict:
     rag_schedule = scheduler.generate_schedule(enable_rag=True)
     rag_sig = signature(rag_schedule)
     rag_report = scheduler.get_reliability_report()
-    _, rag_violations = scheduler.validate_schedule(rag_schedule)
 
     baseline_schedule = scheduler.generate_schedule(enable_rag=False)
     baseline_sig = signature(baseline_schedule)
+    baseline_report = scheduler.get_reliability_report()
 
     changed_count = 0
     baseline_map = {item[0]: item[1] for item in baseline_sig}
@@ -99,26 +125,21 @@ def run_consistency_check(name: str, scheduler: Scheduler) -> dict:
         if baseline_map.get(title) != scheduled_time:
             changed_count += 1
 
-    citation_coverage = 0.0
-    if rag_schedule:
-        with_sources = sum(1 for item in rag_schedule if len(item.get("retrieval_sources", [])) > 0)
-        citation_coverage = with_sources / len(rag_schedule)
-
-    constraint_violations = sum(1 for v in rag_violations if "violates constraint" in v)
-    constraint_respect = 1.0
-    if rag_schedule:
-        constraint_respect = max(0.0, 1.0 - (constraint_violations / len(rag_schedule)))
+    rag_impact_delta = rag_report["scheduled_ratio"] - baseline_report["scheduled_ratio"]
 
     return {
         "name": name,
         "consistent": first_sig == second_sig,
         "scheduled": rag_report["scheduled_tasks"],
         "total": rag_report["total_tasks"],
+        "scheduled_ratio": rag_report["scheduled_ratio"],
         "overall_confidence": rag_report["overall_confidence"],
         "warnings": len(rag_report["guardrail_warnings"]),
-        "citation_coverage": round(citation_coverage, 2),
-        "constraint_respect": round(constraint_respect, 2),
+        "citation_coverage": rag_report["citation_coverage"],
+        "constraint_respect": rag_report["constraint_respect"],
+        "rag_active_tasks": rag_report["rag_active_tasks"],
         "rag_impact_tasks": changed_count,
+        "rag_impact_delta": round(rag_impact_delta, 2),
     }
 
 
@@ -127,6 +148,7 @@ def main():
         ("Border Collie Morning Priority", scenario_border_collie()),
         ("French Bulldog Constraint", scenario_french_bulldog()),
         ("Multi-Pet Collision", scenario_multi_pet_collision()),
+        ("Profile-Generated Border Collie", scenario_profile_generated_border_collie()),
     ]
 
     results = [run_consistency_check(name, scheduler) for name, scheduler in scenarios]
@@ -140,11 +162,14 @@ def main():
         print(
             f"[{status}] {result['name']} | "
             f"scheduled {result['scheduled']}/{result['total']} | "
+            f"scheduled_ratio {result['scheduled_ratio']:.2f} | "
             f"confidence {result['overall_confidence']:.2f} | "
             f"warnings {result['warnings']} | "
             f"citation_coverage {result['citation_coverage']:.2f} | "
             f"constraint_respect {result['constraint_respect']:.2f} | "
-            f"rag_impact_tasks {result['rag_impact_tasks']}"
+            f"rag_active_tasks {result['rag_active_tasks']} | "
+            f"rag_impact_tasks {result['rag_impact_tasks']} | "
+            f"rag_impact_delta {result['rag_impact_delta']:.2f}"
         )
 
     if failures > 0:

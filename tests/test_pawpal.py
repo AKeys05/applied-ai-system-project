@@ -287,11 +287,86 @@ def test_reliability_report_has_expected_fields():
 	assert 'total_tasks' in report
 	assert 'scheduled_tasks' in report
 	assert 'unscheduled_tasks' in report
+	assert 'scheduled_ratio' in report
 	assert 'overall_confidence' in report
 	assert 'low_confidence_tasks' in report
+	assert 'citation_coverage' in report
+	assert 'constraint_respect' in report
+	assert 'rag_active_tasks' in report
 	assert 'guardrail_warnings' in report
 	assert isinstance(report['overall_confidence'], float)
+	assert isinstance(report['scheduled_ratio'], float)
+	assert isinstance(report['citation_coverage'], float)
+	assert isinstance(report['constraint_respect'], float)
+	assert isinstance(report['rag_active_tasks'], int)
 	assert isinstance(report['guardrail_warnings'], list)
+	assert 0.0 <= report['scheduled_ratio'] <= 1.0
+	assert 0.0 <= report['citation_coverage'] <= 1.0
+	assert 0.0 <= report['constraint_respect'] <= 1.0
+
+
+def test_review_edits_persist_into_schedule_outcomes():
+	"""Skip and locked-time review edits should be reflected in final schedule output."""
+	owner = Owner("Jordan")
+	dog = Pet(name="Mochi", species="Dog", breed="")
+	owner.add_pet(dog)
+
+	profile = RoutineProfile(walks_per_day=1, meals_per_day=1, play_sessions_per_day=0)
+	success, _, _ = owner.generate_tasks_from_profile("Mochi", profile)
+	assert success == True
+
+	meal_task = next(t for t in owner.get_all_tasks() if t.title.startswith("Feeding - Meal"))
+	walk_task = next(t for t in owner.get_all_tasks() if t.title.startswith("Exercise - Walk"))
+
+	# Simulate review panel edits.
+	owner.edit_task(meal_task.id, skipped=True)
+	owner.edit_task(walk_task.id, priority=Priority.LOW, preferred_time=time(8, 0), locked_preferred_time=True)
+
+	# Add blocker so locked walk cannot be placed at preferred time.
+	blocker = Task(
+		title="Block 8 AM",
+		duration=30,
+		priority=Priority.HIGH,
+		pet_name="Mochi",
+		preferred_time=time(8, 0),
+	)
+	assert owner.add_task("Mochi", blocker) == True
+
+	scheduler = Scheduler(owner)
+	schedule = scheduler.generate_schedule()
+
+	titles = [item['task'].title for item in schedule]
+	assert not any(title.startswith("Feeding - Meal") for title in titles)
+
+	walk_item = next(item for item in schedule if item['task'].id == walk_task.id)
+	assert walk_item['time'] is None
+	assert "locked_preferred_time" in walk_item['applied_rules']
+	assert any("Locked task" in warning for warning in scheduler.get_reliability_report()['guardrail_warnings'])
+
+
+def test_reliability_report_reflects_rag_on_vs_off():
+	"""Reliability report should expose RAG-active task counts for RAG vs baseline runs."""
+	owner = Owner("Jordan")
+	dog = Pet(name="Mochi", species="Dog", breed="Border Collie", activity_level="high")
+	owner.add_pet(dog)
+
+	task = Task(
+		title="Enrichment Training",
+		duration=30,
+		priority=Priority.MEDIUM,
+		pet_name="Mochi",
+	)
+	assert owner.add_task("Mochi", task) == True
+
+	scheduler = Scheduler(owner)
+	scheduler.generate_schedule(enable_rag=True)
+	rag_report = scheduler.get_reliability_report()
+
+	scheduler.generate_schedule(enable_rag=False)
+	baseline_report = scheduler.get_reliability_report()
+
+	assert rag_report['rag_active_tasks'] >= 1
+	assert baseline_report['rag_active_tasks'] == 0
 
 
 def test_consistent_output_for_sample_french_bulldog_input():
