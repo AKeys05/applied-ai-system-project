@@ -28,6 +28,35 @@ class ScheduleConstraint:
 	hard_constraint: bool = True
 	source: str = "user"
 
+
+@dataclass
+class RoutineProfile:
+	"""High-level care preferences used to auto-generate daily tasks."""
+	walks_per_day: int = 1
+	meals_per_day: int = 2
+	play_sessions_per_day: int = 1
+	medication_times: List[time] = field(default_factory=list)
+	grooming_sessions_per_week: int = 0
+	walk_window_start: Optional[time] = time(7, 0)
+	walk_window_end: Optional[time] = time(10, 0)
+	meal_window_start: Optional[time] = time(7, 0)
+	meal_window_end: Optional[time] = time(19, 0)
+	play_window_start: Optional[time] = time(8, 0)
+	play_window_end: Optional[time] = time(20, 0)
+
+	def validate(self) -> tuple[bool, Optional[str]]:
+		if self.walks_per_day < 0 or self.meals_per_day < 0 or self.play_sessions_per_day < 0:
+			return False, "Walk, meal, and play frequencies cannot be negative."
+		if self.grooming_sessions_per_week < 0:
+			return False, "Grooming frequency cannot be negative."
+		if self.walk_window_start and self.walk_window_end and self.walk_window_start >= self.walk_window_end:
+			return False, "Walk window start must be earlier than walk window end."
+		if self.meal_window_start and self.meal_window_end and self.meal_window_start >= self.meal_window_end:
+			return False, "Meal window start must be earlier than meal window end."
+		if self.play_window_start and self.play_window_end and self.play_window_start >= self.play_window_end:
+			return False, "Play window start must be earlier than play window end."
+		return True, None
+
 @dataclass
 class Pet:
 	name: str
@@ -74,6 +103,7 @@ class Task:
 	scheduled_date: Optional[date] = None  # The specific date this task is for
 	parent_task_id: Optional[str] = None  # Links to the original recurring task template
 	retrieval_sources: List[str] = field(default_factory=list)
+	task_source: str = "manual"
 
 	def validate_basic_fields(self) -> tuple[bool, Optional[str]]:
 		"""Validate required fields and basic bounds for safe scheduling."""
@@ -275,6 +305,7 @@ class Task:
 			scheduled_date=next_date,
 			parent_task_id=self.parent_task_id or self.id,  # Link to original
 			retrieval_sources=list(self.retrieval_sources),
+			task_source=self.task_source,
 		)
 
 		return new_task
@@ -347,6 +378,149 @@ class Owner:
 	def clear_availability_windows(self) -> None:
 		"""Clear all owner availability windows."""
 		self.availability_windows = []
+
+	def _build_constraint_from_window(self, start: Optional[time], end: Optional[time]) -> tuple[Optional[str], ScheduleConstraint]:
+		"""Convert preferred window into scheduling constraint representation."""
+		constraint = ScheduleConstraint(source="profile")
+		constraint_text = None
+		if start:
+			constraint.earliest_start = start
+		if end:
+			constraint.latest_end = end
+		if start and end:
+			constraint_text = f"after {start.strftime('%H:%M')}"
+		elif start:
+			constraint_text = f"after {start.strftime('%H:%M')}"
+		elif end:
+			constraint_text = f"before {end.strftime('%H:%M')}"
+		return constraint_text, constraint
+
+	def _remove_generated_tasks_for_pet(self, pet_name: str) -> None:
+		"""Remove previously generated profile tasks for a pet before regeneration."""
+		pet = self.get_pet(pet_name)
+		if not pet:
+			return
+		remaining_tasks = []
+		for task in pet.tasks:
+			if task.task_source == "profile_generated":
+				self.task_index.pop(task.id, None)
+			else:
+				remaining_tasks.append(task)
+		pet.tasks = remaining_tasks
+
+	def generate_tasks_from_profile(self, pet_name: str, profile: RoutineProfile, replace_existing: bool = True) -> tuple[bool, int, Optional[str]]:
+		"""Generate daily routine tasks from profile preferences.
+
+		Returns (success, tasks_created, error).
+		"""
+		pet = self.get_pet(pet_name)
+		if not pet:
+			return (False, 0, f"Pet '{pet_name}' not found.")
+
+		is_valid, error = profile.validate()
+		if not is_valid:
+			return (False, 0, error)
+
+		if replace_existing:
+			self._remove_generated_tasks_for_pet(pet_name)
+
+		created_count = 0
+		today = date.today()
+
+		# Walk tasks
+		for idx in range(profile.walks_per_day):
+			title = "Walk" if profile.walks_per_day == 1 else f"Walk #{idx + 1}"
+			time_constraint, schedule_constraint = self._build_constraint_from_window(
+				profile.walk_window_start,
+				profile.walk_window_end,
+			)
+			task = Task(
+				title=title,
+				duration=30,
+				priority=Priority.HIGH,
+				pet_name=pet_name,
+				time_constraint=time_constraint,
+				schedule_constraint=schedule_constraint,
+				frequency=Frequency.DAILY,
+				scheduled_date=today,
+				task_source="profile_generated",
+			)
+			if self.add_task(pet_name, task):
+				created_count += 1
+
+		# Meal tasks
+		for idx in range(profile.meals_per_day):
+			title = "Meal" if profile.meals_per_day == 1 else f"Meal #{idx + 1}"
+			time_constraint, schedule_constraint = self._build_constraint_from_window(
+				profile.meal_window_start,
+				profile.meal_window_end,
+			)
+			task = Task(
+				title=title,
+				duration=15,
+				priority=Priority.HIGH,
+				pet_name=pet_name,
+				time_constraint=time_constraint,
+				schedule_constraint=schedule_constraint,
+				frequency=Frequency.DAILY,
+				scheduled_date=today,
+				task_source="profile_generated",
+			)
+			if self.add_task(pet_name, task):
+				created_count += 1
+
+		# Play/enrichment tasks
+		for idx in range(profile.play_sessions_per_day):
+			title = "Play / Enrichment" if profile.play_sessions_per_day == 1 else f"Play / Enrichment #{idx + 1}"
+			time_constraint, schedule_constraint = self._build_constraint_from_window(
+				profile.play_window_start,
+				profile.play_window_end,
+			)
+			task = Task(
+				title=title,
+				duration=20,
+				priority=Priority.MEDIUM,
+				pet_name=pet_name,
+				time_constraint=time_constraint,
+				schedule_constraint=schedule_constraint,
+				frequency=Frequency.DAILY,
+				scheduled_date=today,
+				task_source="profile_generated",
+			)
+			if self.add_task(pet_name, task):
+				created_count += 1
+
+		# Medication tasks
+		for med_time in profile.medication_times:
+			task = Task(
+				title="Medication",
+				duration=10,
+				priority=Priority.HIGH,
+				pet_name=pet_name,
+				preferred_time=med_time,
+				frequency=Frequency.DAILY,
+				scheduled_date=today,
+				task_source="profile_generated",
+			)
+			if self.add_task(pet_name, task):
+				created_count += 1
+
+		# Grooming tasks (weekly cadence)
+		for idx in range(profile.grooming_sessions_per_week):
+			title = "Grooming" if profile.grooming_sessions_per_week == 1 else f"Grooming #{idx + 1}"
+			task = Task(
+				title=title,
+				duration=25,
+				priority=Priority.LOW,
+				pet_name=pet_name,
+				frequency=Frequency.WEEKLY,
+				scheduled_date=today,
+				task_source="profile_generated",
+			)
+			if self.add_task(pet_name, task):
+				created_count += 1
+
+		return (True, created_count, None)
 
 	def add_pet(self, pet: Pet) -> None:
 		"""Add a pet to the owner's pet list."""

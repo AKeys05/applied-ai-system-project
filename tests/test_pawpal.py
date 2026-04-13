@@ -1,4 +1,4 @@
-from pawpal_system import Owner, Pet, Task, Priority, Scheduler, Frequency, ScheduleConstraint
+from pawpal_system import Owner, Pet, Task, Priority, Scheduler, Frequency, ScheduleConstraint, RoutineProfile
 from datetime import time, date, timedelta
 
 
@@ -15,6 +15,66 @@ def test_pet_profile_fields_are_stored():
 	assert pet.breed == "Border Collie"
 	assert pet.age_years == 3.5
 	assert pet.activity_level == "high"
+
+
+def test_routine_profile_validation_rejects_invalid_windows():
+	"""Routine profile should reject invalid window ordering."""
+	profile = RoutineProfile(
+		walk_window_start=time(10, 0),
+		walk_window_end=time(8, 0),
+	)
+	is_valid, error = profile.validate()
+	assert is_valid == False
+	assert error is not None
+
+
+def test_generate_tasks_from_profile_creates_expected_daily_tasks():
+	"""Owner should synthesize routine tasks from profile preferences."""
+	owner = Owner("Jordan")
+	pet = Pet(name="Mochi", species="Dog", breed="Border Collie")
+	owner.add_pet(pet)
+
+	profile = RoutineProfile(
+		walks_per_day=2,
+		meals_per_day=2,
+		play_sessions_per_day=1,
+		medication_times=[time(8, 0)],
+		grooming_sessions_per_week=1,
+	)
+
+	success, created_count, error = owner.generate_tasks_from_profile("Mochi", profile)
+	assert success == True
+	assert error is None
+	assert created_count == 7  # 2 walks + 2 meals + 1 play + 1 meds + 1 grooming
+
+	all_tasks = owner.get_all_tasks()
+	assert len(all_tasks) == 7
+	assert all(task.task_source == "profile_generated" for task in all_tasks)
+	assert sum(1 for t in all_tasks if t.title.startswith("Walk")) == 2
+	assert sum(1 for t in all_tasks if t.title.startswith("Meal")) == 2
+	assert any(t.title == "Medication" for t in all_tasks)
+
+
+def test_generate_tasks_from_profile_replaces_previous_generated_tasks():
+	"""Regenerating profile tasks should replace old generated tasks when requested."""
+	owner = Owner("Jordan")
+	pet = Pet(name="Mochi", species="Dog", breed="Border Collie")
+	owner.add_pet(pet)
+
+	first_profile = RoutineProfile(walks_per_day=1, meals_per_day=1, play_sessions_per_day=0)
+	second_profile = RoutineProfile(walks_per_day=2, meals_per_day=1, play_sessions_per_day=1)
+
+	success1, created1, _ = owner.generate_tasks_from_profile("Mochi", first_profile, replace_existing=True)
+	assert success1 == True
+	assert created1 == 2
+
+	success2, created2, _ = owner.generate_tasks_from_profile("Mochi", second_profile, replace_existing=True)
+	assert success2 == True
+	assert created2 == 4
+
+	all_tasks = owner.get_all_tasks()
+	assert len(all_tasks) == 4
+	assert sum(1 for t in all_tasks if t.title.startswith("Walk")) == 2
 
 
 def test_structured_constraint_respected_when_scheduling():

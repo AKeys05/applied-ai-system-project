@@ -1,6 +1,8 @@
 import streamlit as st
 import datetime
-from pawpal_system import Owner, Pet, Task, Priority, Scheduler, Frequency, ScheduleConstraint
+import json
+from pathlib import Path
+from pawpal_system import Owner, Pet, Task, Priority, Scheduler, Frequency, ScheduleConstraint, RoutineProfile
 
 st.set_page_config(page_title="PawPal+", page_icon="🐾", layout="centered")
 
@@ -29,6 +31,22 @@ with st.expander("Features", expanded=True):
 
 
 st.divider()
+
+
+def get_breed_options_for_species(species: str) -> list[str]:
+    """Load breed dropdown options from the local RAG data file."""
+    try:
+        data_path = Path(__file__).resolve().parent / "data" / "breed_guidelines.json"
+        with open(data_path, "r", encoding="utf-8") as file:
+            data = json.load(file)
+        breeds = []
+        for breed_name, info in data.get("breeds", {}).items():
+            if info.get("species") == species:
+                breeds.append(breed_name.title())
+        breeds = sorted(set(breeds))
+        return breeds + ["Mixed", "Custom"] if breeds else ["Mixed", "Custom"]
+    except Exception:
+        return ["Mixed", "Custom"]
 
 # Initialize owner in session_state
 st.subheader("Owner Information")
@@ -144,9 +162,14 @@ with col1:
 with col2:
     new_pet_species = st.selectbox("Species", ["dog", "cat", "bird", "rabbit", "other"], key="new_pet_species")
 with col3:
-    new_pet_breed = st.text_input("Breed", value="Mixed", key="new_pet_breed")
+    breed_options = get_breed_options_for_species(new_pet_species)
+    new_pet_breed_choice = st.selectbox("Breed", breed_options, key="new_pet_breed_choice")
 with col4:
     new_pet_activity = st.selectbox("Activity level", ["low", "medium", "high"], index=1, key="new_pet_activity")
+
+new_pet_breed = new_pet_breed_choice
+if new_pet_breed_choice == "Custom":
+    new_pet_breed = st.text_input("Custom breed", value="", key="new_pet_breed_custom").strip() or "Mixed"
 
 new_pet_age = st.number_input("Age (years)", min_value=0.0, max_value=40.0, value=2.0, step=0.5, key="new_pet_age")
 
@@ -169,11 +192,81 @@ if st.button("Add Pet"):
 st.divider()
 
 st.markdown("### Tasks")
-st.caption("Add tasks for your pets.")
+st.caption("Use Routine Builder to auto-create a daily routine. Manual task entry is still available below.")
 
 if not owner.pets:
     st.warning("⚠️ Please add at least one pet before creating tasks.")
 else:
+    st.markdown("#### 🧭 Routine Builder (Recommended)")
+    routine_pet_name = st.selectbox("Select pet for routine", [pet.name for pet in owner.pets.values()], key="routine_pet_select")
+
+    with st.form("routine_builder_form"):
+        st.caption("Set daily care preferences. PawPal+ will auto-generate tasks from this profile.")
+
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            walks_per_day = st.number_input("Walks per day", min_value=0, max_value=6, value=1, step=1)
+            meals_per_day = st.number_input("Meals per day", min_value=0, max_value=6, value=2, step=1)
+        with col2:
+            play_sessions = st.number_input("Play/enrichment sessions", min_value=0, max_value=6, value=1, step=1)
+            grooming_per_week = st.number_input("Grooming sessions/week", min_value=0, max_value=7, value=0, step=1)
+        with col3:
+            med_doses = st.number_input("Medication doses/day", min_value=0, max_value=6, value=0, step=1)
+
+        st.markdown("**Preferred windows**")
+        w1, w2 = st.columns(2)
+        with w1:
+            walk_window_start = st.time_input("Walk window start", value=datetime.time(7, 0), key="walk_window_start")
+            meal_window_start = st.time_input("Meal window start", value=datetime.time(7, 0), key="meal_window_start")
+            play_window_start = st.time_input("Play window start", value=datetime.time(8, 0), key="play_window_start")
+        with w2:
+            walk_window_end = st.time_input("Walk window end", value=datetime.time(10, 0), key="walk_window_end")
+            meal_window_end = st.time_input("Meal window end", value=datetime.time(19, 0), key="meal_window_end")
+            play_window_end = st.time_input("Play window end", value=datetime.time(20, 0), key="play_window_end")
+
+        medication_times = []
+        if med_doses > 0:
+            st.markdown("**Medication times**")
+            for idx in range(int(med_doses)):
+                medication_times.append(
+                    st.time_input(
+                        f"Medication time #{idx + 1}",
+                        value=datetime.time(8 + idx, 0),
+                        key=f"med_time_{idx}",
+                    )
+                )
+
+        regenerate_mode = st.checkbox("Replace previously generated profile tasks for this pet", value=True)
+        submitted = st.form_submit_button("Generate Routine Tasks")
+
+        if submitted:
+            profile = RoutineProfile(
+                walks_per_day=int(walks_per_day),
+                meals_per_day=int(meals_per_day),
+                play_sessions_per_day=int(play_sessions),
+                medication_times=medication_times,
+                grooming_sessions_per_week=int(grooming_per_week),
+                walk_window_start=walk_window_start,
+                walk_window_end=walk_window_end,
+                meal_window_start=meal_window_start,
+                meal_window_end=meal_window_end,
+                play_window_start=play_window_start,
+                play_window_end=play_window_end,
+            )
+            success, tasks_created, error = owner.generate_tasks_from_profile(
+                routine_pet_name,
+                profile,
+                replace_existing=regenerate_mode,
+            )
+            if success:
+                st.success(f"✅ Generated {tasks_created} tasks for {routine_pet_name}.")
+                st.rerun()
+            else:
+                st.error(f"❌ Could not generate routine tasks: {error}")
+
+    st.divider()
+    st.markdown("#### Manual Task Entry (Advanced)")
+
     # Pet selector for tasks
     pet_names = [pet.name for pet in owner.pets.values()]
     selected_pet_name = st.selectbox("Select pet for task", pet_names)
