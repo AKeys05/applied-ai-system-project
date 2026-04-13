@@ -32,6 +32,19 @@ with st.expander("Features", expanded=True):
 
 st.divider()
 
+if "workflow_phase" not in st.session_state:
+    st.session_state.workflow_phase = "owner_setup"
+if "auto_generate_daily_schedule" not in st.session_state:
+    st.session_state.auto_generate_daily_schedule = False
+
+
+def owner_profile_complete(owner_obj: Owner) -> bool:
+    return bool(owner_obj.name.strip()) and bool(owner_obj.timezone.strip())
+
+
+def pet_profile_complete(owner_obj: Owner) -> bool:
+    return len(owner_obj.pets) > 0
+
 
 def get_breed_options_for_species(species: str) -> list[str]:
     """Load breed dropdown options from the local RAG data file."""
@@ -66,6 +79,32 @@ if not hasattr(owner, "timezone"):
     owner.timezone = "Local"
 if not hasattr(owner, "availability_windows"):
     owner.availability_windows = []
+
+owner_ready = owner_profile_complete(owner)
+pets_ready = pet_profile_complete(owner)
+routine_ready = owner_ready and pets_ready
+
+if st.session_state.workflow_phase == "owner_setup" and owner_ready:
+    st.session_state.workflow_phase = "pet_setup"
+if st.session_state.workflow_phase == "pet_setup" and pets_ready:
+    st.session_state.workflow_phase = "routine_setup"
+
+st.markdown("### Workflow Progress")
+status_col1, status_col2, status_col3 = st.columns(3)
+with status_col1:
+    st.metric("Owner Profile", "Complete" if owner_ready else "Needed")
+with status_col2:
+    st.metric("Pet Profiles", "Complete" if pets_ready else "Needed")
+with status_col3:
+    current_phase_label = st.session_state.workflow_phase.replace("_", " ").title()
+    st.metric("Current Phase", current_phase_label)
+
+if not owner_ready:
+    st.info("Start with owner details: name and timezone.")
+elif not pets_ready:
+    st.info("Add at least one pet to unlock routine generation.")
+else:
+    st.success("Profile setup complete. Build a routine and continue to scheduling.")
 
 owner_col1, owner_col2 = st.columns(2)
 with owner_col1:
@@ -194,8 +233,8 @@ st.divider()
 st.markdown("### Tasks")
 st.caption("Use Routine Builder to auto-create a daily routine. Manual task entry is still available below.")
 
-if not owner.pets:
-    st.warning("⚠️ Please add at least one pet before creating tasks.")
+if not routine_ready:
+    st.warning("⚠️ Complete owner profile and add at least one pet before creating tasks.")
 else:
     st.markdown("#### 🧭 Routine Builder (Recommended)")
     routine_pet_name = st.selectbox("Select pet for routine", [pet.name for pet in owner.pets.values()], key="routine_pet_select")
@@ -260,6 +299,7 @@ else:
             )
             if success:
                 st.success(f"✅ Generated {tasks_created} tasks for {routine_pet_name}.")
+                st.session_state.workflow_phase = "review"
                 st.rerun()
             else:
                 st.error(f"❌ Could not generate routine tasks: {error}")
@@ -311,106 +351,112 @@ else:
                         owner.edit_task(task.id, preferred_time=lock_time, locked_preferred_time=True)
                         st.rerun()
 
-    st.divider()
-    st.markdown("#### Manual Task Entry (Advanced)")
-
-    # Pet selector for tasks
-    pet_names = [pet.name for pet in owner.pets.values()]
-    selected_pet_name = st.selectbox("Select pet for task", pet_names)
-
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        task_title = st.text_input("Task title", value="Morning walk")
-    with col2:
-        duration = st.number_input("Duration (minutes)", min_value=1, max_value=240, value=20)
-    with col3:
-        priority = st.selectbox("Priority", ["low", "medium", "high"], index=2)
-
-    # Optional preferred time
-    use_preferred_time = st.checkbox("Set preferred time")
-    preferred_time = None
-    if use_preferred_time:
-        preferred_time = st.time_input("Preferred time", value=datetime.time(8, 0))
-
-    # Optional time constraint
-    add_constraint = st.checkbox("Add time constraint")
-    time_constraint = None
-    schedule_constraint = ScheduleConstraint()
-    if add_constraint:
-        constraint_type = st.radio("Constraint type", ["before", "after"])
-        constraint_time = st.time_input("Constraint time", value=None)
-        constraint_strength = st.selectbox("Constraint strength", ["Hard", "Soft"], index=0)
-        if constraint_time:
-            time_constraint = f"{constraint_type} {constraint_time.strftime('%H:%M')}"
-            if constraint_type == "before":
-                schedule_constraint.latest_end = constraint_time
-            else:
-                schedule_constraint.earliest_start = constraint_time
-            schedule_constraint.hard_constraint = constraint_strength == "Hard"
-            schedule_constraint.source = "user"
-
-    # Recurring task options
-    is_recurring = st.checkbox("Make this a recurring task")
-    frequency = None
-    scheduled_date = None
-
-    if is_recurring:
-        col1, col2 = st.columns(2)
-        with col1:
-            frequency_str = st.selectbox(
-                "Frequency",
-                ["daily", "weekly", "biweekly", "monthly"],
-                help="How often should this task repeat?"
-            )
-            frequency = Frequency(frequency_str)
-        with col2:
-            scheduled_date = st.date_input(
-                "Start date",
-                value=datetime.date.today(),
-                help="When should this recurring task start?"
-            )
-    else:
-        # For non-recurring tasks, set scheduled_date to today
-        scheduled_date = datetime.date.today()
-
-    if st.button("Add task"):
-        # Map string priority to Priority enum
-        priority_map = {
-            "low": Priority.LOW,
-            "medium": Priority.MEDIUM,
-            "high": Priority.HIGH
-        }
-
-        task = Task(
-            title=task_title,
-            duration=int(duration),
-            priority=priority_map[priority],
-            pet_name=selected_pet_name,
-            preferred_time=preferred_time,
-            time_constraint=time_constraint,
-            schedule_constraint=schedule_constraint,
-            frequency=frequency,
-            scheduled_date=scheduled_date
-        )
-
-        # Guardrails for invalid task settings
-        is_valid, error = task.validate_basic_fields()
-        if not is_valid:
-            st.error(f"❌ {error}")
-            st.stop()
-
-        is_valid, error = task.validate_time_settings()
-        if not is_valid:
-            st.error(f"❌ {error}")
-            st.stop()
-
-        # Add task using owner API (includes validation + indexing)
-        if owner.add_task(selected_pet_name, task):
-            recurring_msg = f" (recurring {frequency.value})" if frequency else ""
-            st.success(f"✅ Added task '{task_title}' for {selected_pet_name}{recurring_msg}!")
+        if st.button("Continue to Schedule", key="continue_to_schedule"):
+            st.session_state.workflow_phase = "scheduling"
+            st.session_state.auto_generate_daily_schedule = True
             st.rerun()
+
+    st.divider()
+    with st.expander("➕ Advanced: Manual Task Entry", expanded=False):
+        st.markdown("#### Manual Task Entry")
+
+        # Pet selector for tasks
+        pet_names = [pet.name for pet in owner.pets.values()]
+        selected_pet_name = st.selectbox("Select pet for task", pet_names)
+
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            task_title = st.text_input("Task title", value="Morning walk")
+        with col2:
+            duration = st.number_input("Duration (minutes)", min_value=1, max_value=240, value=20)
+        with col3:
+            priority = st.selectbox("Priority", ["low", "medium", "high"], index=2)
+
+        # Optional preferred time
+        use_preferred_time = st.checkbox("Set preferred time")
+        preferred_time = None
+        if use_preferred_time:
+            preferred_time = st.time_input("Preferred time", value=datetime.time(8, 0))
+
+        # Optional time constraint
+        add_constraint = st.checkbox("Add time constraint")
+        time_constraint = None
+        schedule_constraint = ScheduleConstraint()
+        if add_constraint:
+            constraint_type = st.radio("Constraint type", ["before", "after"])
+            constraint_time = st.time_input("Constraint time", value=None)
+            constraint_strength = st.selectbox("Constraint strength", ["Hard", "Soft"], index=0)
+            if constraint_time:
+                time_constraint = f"{constraint_type} {constraint_time.strftime('%H:%M')}"
+                if constraint_type == "before":
+                    schedule_constraint.latest_end = constraint_time
+                else:
+                    schedule_constraint.earliest_start = constraint_time
+                schedule_constraint.hard_constraint = constraint_strength == "Hard"
+                schedule_constraint.source = "user"
+
+        # Recurring task options
+        is_recurring = st.checkbox("Make this a recurring task")
+        frequency = None
+        scheduled_date = None
+
+        if is_recurring:
+            col1, col2 = st.columns(2)
+            with col1:
+                frequency_str = st.selectbox(
+                    "Frequency",
+                    ["daily", "weekly", "biweekly", "monthly"],
+                    help="How often should this task repeat?"
+                )
+                frequency = Frequency(frequency_str)
+            with col2:
+                scheduled_date = st.date_input(
+                    "Start date",
+                    value=datetime.date.today(),
+                    help="When should this recurring task start?"
+                )
         else:
-            st.error("❌ Could not add task. Check pet selection and constraint settings.")
+            # For non-recurring tasks, set scheduled_date to today
+            scheduled_date = datetime.date.today()
+
+        if st.button("Add task"):
+            # Map string priority to Priority enum
+            priority_map = {
+                "low": Priority.LOW,
+                "medium": Priority.MEDIUM,
+                "high": Priority.HIGH
+            }
+
+            task = Task(
+                title=task_title,
+                duration=int(duration),
+                priority=priority_map[priority],
+                pet_name=selected_pet_name,
+                preferred_time=preferred_time,
+                time_constraint=time_constraint,
+                schedule_constraint=schedule_constraint,
+                frequency=frequency,
+                scheduled_date=scheduled_date
+            )
+
+            # Guardrails for invalid task settings
+            is_valid, error = task.validate_basic_fields()
+            if not is_valid:
+                st.error(f"❌ {error}")
+                st.stop()
+
+            is_valid, error = task.validate_time_settings()
+            if not is_valid:
+                st.error(f"❌ {error}")
+                st.stop()
+
+            # Add task using owner API (includes validation + indexing)
+            if owner.add_task(selected_pet_name, task):
+                recurring_msg = f" (recurring {frequency.value})" if frequency else ""
+                st.success(f"✅ Added task '{task_title}' for {selected_pet_name}{recurring_msg}!")
+                st.rerun()
+            else:
+                st.error("❌ Could not add task. Check pet selection and constraint settings.")
 
     # Display all tasks with enhanced filtering and sorting
     st.markdown("#### Current Tasks")
@@ -542,11 +588,19 @@ st.divider()
 
 st.subheader("📅 Schedule View")
 
+if not routine_ready:
+    st.caption("Schedule visualization will unlock after profile setup.")
+
 tab1, tab2 = st.tabs(["📋 Daily Schedule", "📅 Weekly Calendar"])
 
 # TAB 1: Daily Schedule (existing functionality)
 with tab1:
-    if st.button("Generate Daily Schedule"):
+    trigger_daily_generation = st.button("Generate Daily Schedule")
+    if st.session_state.auto_generate_daily_schedule:
+        trigger_daily_generation = True
+        st.session_state.auto_generate_daily_schedule = False
+
+    if trigger_daily_generation:
         # Check if there are any tasks
         all_tasks = owner.get_all_tasks()
 
