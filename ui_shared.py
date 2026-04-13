@@ -114,3 +114,42 @@ def display_task_card(schedule_item: dict, compact: bool = False) -> None:
 
 def default_time(hour: int, minute: int = 0) -> datetime.time:
     return datetime.time(hour, minute)
+
+
+def render_sidebar_guidance(page_name: str, owner_obj: Owner) -> None:
+    _ = owner_obj
+
+    overview_by_page = {
+        "Home": "Set up your owner profile and pet details so PawPal+ has the context needed for planning.",
+        "Task Builder": "Generate and refine daily routine tasks for each pet before creating a schedule.",
+        "Schedule": "Build and review daily or weekly schedules from your configured tasks.",
+    }
+
+    instructions_by_page = {
+        "Home": [
+            "Set owner name and timezone first.",
+            "Add at least one pet profile.",
+            "Optional: add owner availability windows.",
+            "When ready, go to Task Builder.",
+        ],
+        "Task Builder": [
+            "Select a pet and configure routine preferences.",
+            "Generate profile-based tasks.",
+            "Review generated tasks: skip, lock, or set preferred time.",
+            "Use Continue to Schedule when review is complete.",
+        ],
+        "Schedule": [
+            "Generate Daily Schedule to see the planned day.",
+            "Check reliability and decision metadata.",
+            "Use Weekly Calendar for week-level visibility.",
+            "If tasks need edits, return to Task Builder.",
+        ],
+    }
+
+    with st.sidebar:
+        st.markdown("---")
+        st.markdown("### Page Overview")
+        st.caption(overview_by_page.get(page_name, "Manage this page's settings and actions."))
+        st.markdown("### Instructions")
+        for line in instructions_by_page.get(page_name, []):
+            st.markdown(f"- {line}")

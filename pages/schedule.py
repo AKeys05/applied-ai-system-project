@@ -4,11 +4,18 @@ from datetime import timedelta
 import streamlit as st
 
 from pawpal_system import Scheduler
-from ui_shared import display_task_card, init_app_state, routine_ready, sync_workflow_phase
+from ui_shared import (
+    display_task_card,
+    init_app_state,
+    render_sidebar_guidance,
+    routine_ready,
+    sync_workflow_phase,
+)
 
 st.title("📅 Schedule View")
 owner = init_app_state()
 sync_workflow_phase(owner)
+render_sidebar_guidance("Schedule", owner)
 
 if not routine_ready(owner):
     st.caption("Schedule visualization will unlock after owner and pet setup on Home.")

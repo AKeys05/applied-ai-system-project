@@ -3,11 +3,18 @@ import datetime
 import streamlit as st
 
 from pawpal_system import Frequency, Priority, RoutineProfile, ScheduleConstraint, Task
-from ui_shared import init_app_state, render_workflow_progress, routine_ready, sync_workflow_phase
+from ui_shared import (
+    init_app_state,
+    render_sidebar_guidance,
+    render_workflow_progress,
+    routine_ready,
+    sync_workflow_phase,
+)
 
 st.title("🧭 Task & Routine Builder")
 owner = init_app_state()
 sync_workflow_phase(owner)
+render_sidebar_guidance("Task Builder", owner)
 render_workflow_progress(owner)
 
 st.markdown("### Tasks")

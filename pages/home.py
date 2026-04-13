@@ -6,6 +6,7 @@ from pawpal_system import Pet
 from ui_shared import (
     get_breed_options_for_species,
     init_app_state,
+    render_sidebar_guidance,
     render_workflow_progress,
     sync_workflow_phase,
 )
@@ -31,6 +32,7 @@ with st.expander("Features", expanded=True):
 
 owner = init_app_state()
 sync_workflow_phase(owner)
+render_sidebar_guidance("Home", owner)
 render_workflow_progress(owner)
 
 st.divider()
