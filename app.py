@@ -36,6 +36,8 @@ if "workflow_phase" not in st.session_state:
     st.session_state.workflow_phase = "owner_setup"
 if "auto_generate_daily_schedule" not in st.session_state:
     st.session_state.auto_generate_daily_schedule = False
+if "last_routine_profiles" not in st.session_state:
+    st.session_state.last_routine_profiles = {}
 
 
 def owner_profile_complete(owner_obj: Owner) -> bool:
@@ -238,47 +240,145 @@ if not routine_ready:
 else:
     st.markdown("#### 🧭 Routine Builder (Recommended)")
     routine_pet_name = st.selectbox("Select pet for routine", [pet.name for pet in owner.pets.values()], key="routine_pet_select")
+    profile_defaults = st.session_state.last_routine_profiles.get(routine_pet_name, {})
+
+    default_walks = int(profile_defaults.get("walks_per_day", 1))
+    default_meals = int(profile_defaults.get("meals_per_day", 2))
+    default_play = int(profile_defaults.get("play_sessions_per_day", 1))
+    default_grooming = int(profile_defaults.get("grooming_sessions_per_week", 0))
+    default_med_doses = int(profile_defaults.get("med_doses", 0))
+
+    default_walk_start = profile_defaults.get("walk_window_start", datetime.time(7, 0))
+    default_walk_end = profile_defaults.get("walk_window_end", datetime.time(10, 0))
+    default_meal_start = profile_defaults.get("meal_window_start", datetime.time(7, 0))
+    default_meal_end = profile_defaults.get("meal_window_end", datetime.time(19, 0))
+    default_play_start = profile_defaults.get("play_window_start", datetime.time(8, 0))
+    default_play_end = profile_defaults.get("play_window_end", datetime.time(20, 0))
+
+    default_med_times = profile_defaults.get("medication_times", [])
 
     with st.form("routine_builder_form"):
         st.caption("Set daily care preferences. PawPal+ will auto-generate tasks from this profile.")
 
         col1, col2, col3 = st.columns(3)
         with col1:
-            walks_per_day = st.number_input("Walks per day", min_value=0, max_value=6, value=1, step=1)
-            meals_per_day = st.number_input("Meals per day", min_value=0, max_value=6, value=2, step=1)
+            walks_per_day = st.number_input(
+                "Walks per day",
+                min_value=0,
+                max_value=6,
+                value=default_walks,
+                step=1,
+                key=f"walks_per_day_{routine_pet_name}",
+            )
+            meals_per_day = st.number_input(
+                "Meals per day",
+                min_value=0,
+                max_value=6,
+                value=default_meals,
+                step=1,
+                key=f"meals_per_day_{routine_pet_name}",
+            )
         with col2:
-            play_sessions = st.number_input("Play/enrichment sessions", min_value=0, max_value=6, value=1, step=1)
-            grooming_per_week = st.number_input("Grooming sessions/week", min_value=0, max_value=7, value=0, step=1)
+            play_sessions = st.number_input(
+                "Play/enrichment sessions",
+                min_value=0,
+                max_value=6,
+                value=default_play,
+                step=1,
+                key=f"play_sessions_{routine_pet_name}",
+            )
+            grooming_per_week = st.number_input(
+                "Grooming sessions/week",
+                min_value=0,
+                max_value=7,
+                value=default_grooming,
+                step=1,
+                key=f"grooming_per_week_{routine_pet_name}",
+            )
         with col3:
-            med_doses = st.number_input("Medication doses/day", min_value=0, max_value=6, value=0, step=1)
+            med_doses = st.number_input(
+                "Medication doses/day",
+                min_value=0,
+                max_value=6,
+                value=default_med_doses,
+                step=1,
+                key=f"med_doses_{routine_pet_name}",
+            )
 
         st.markdown("**Preferred windows**")
         w1, w2 = st.columns(2)
         with w1:
-            walk_window_start = st.time_input("Walk window start", value=datetime.time(7, 0), key="walk_window_start")
-            meal_window_start = st.time_input("Meal window start", value=datetime.time(7, 0), key="meal_window_start")
-            play_window_start = st.time_input("Play window start", value=datetime.time(8, 0), key="play_window_start")
+            walk_window_start = st.time_input(
+                "Walk window start",
+                value=default_walk_start,
+                key=f"walk_window_start_{routine_pet_name}",
+            )
+            meal_window_start = st.time_input(
+                "Meal window start",
+                value=default_meal_start,
+                key=f"meal_window_start_{routine_pet_name}",
+            )
+            play_window_start = st.time_input(
+                "Play window start",
+                value=default_play_start,
+                key=f"play_window_start_{routine_pet_name}",
+            )
         with w2:
-            walk_window_end = st.time_input("Walk window end", value=datetime.time(10, 0), key="walk_window_end")
-            meal_window_end = st.time_input("Meal window end", value=datetime.time(19, 0), key="meal_window_end")
-            play_window_end = st.time_input("Play window end", value=datetime.time(20, 0), key="play_window_end")
+            walk_window_end = st.time_input(
+                "Walk window end",
+                value=default_walk_end,
+                key=f"walk_window_end_{routine_pet_name}",
+            )
+            meal_window_end = st.time_input(
+                "Meal window end",
+                value=default_meal_end,
+                key=f"meal_window_end_{routine_pet_name}",
+            )
+            play_window_end = st.time_input(
+                "Play window end",
+                value=default_play_end,
+                key=f"play_window_end_{routine_pet_name}",
+            )
 
         medication_times = []
         if med_doses > 0:
             st.markdown("**Medication times**")
             for idx in range(int(med_doses)):
+                default_med_time = datetime.time(8 + idx, 0)
+                if idx < len(default_med_times):
+                    default_med_time = default_med_times[idx]
                 medication_times.append(
                     st.time_input(
                         f"Medication time #{idx + 1}",
-                        value=datetime.time(8 + idx, 0),
-                        key=f"med_time_{idx}",
+                        value=default_med_time,
+                        key=f"med_time_{routine_pet_name}_{idx}",
                     )
                 )
 
-        regenerate_mode = st.checkbox("Replace previously generated profile tasks for this pet", value=True)
+        regenerate_mode = st.checkbox(
+            "Replace previously generated profile tasks for this pet",
+            value=bool(profile_defaults.get("regenerate_mode", True)),
+            key=f"regenerate_mode_{routine_pet_name}",
+        )
         submitted = st.form_submit_button("Generate Routine Tasks")
 
         if submitted:
+            st.session_state.last_routine_profiles[routine_pet_name] = {
+                "walks_per_day": int(walks_per_day),
+                "meals_per_day": int(meals_per_day),
+                "play_sessions_per_day": int(play_sessions),
+                "grooming_sessions_per_week": int(grooming_per_week),
+                "med_doses": int(med_doses),
+                "medication_times": list(medication_times),
+                "walk_window_start": walk_window_start,
+                "walk_window_end": walk_window_end,
+                "meal_window_start": meal_window_start,
+                "meal_window_end": meal_window_end,
+                "play_window_start": play_window_start,
+                "play_window_end": play_window_end,
+                "regenerate_mode": bool(regenerate_mode),
+            }
+
             profile = RoutineProfile(
                 walks_per_day=int(walks_per_day),
                 meals_per_day=int(meals_per_day),
@@ -520,8 +620,20 @@ else:
                 # Task title with status and priority
                 recurring_badge = f" `{task.frequency.value}`" if task.frequency else ""
                 status_icon = "✅" if task.completed else "⭕"
+                source_badges = []
+                if task.task_source == "profile_generated":
+                    source_badges.append("🎯 Profile")
+                else:
+                    source_badges.append("✍️ Manual")
+                if task.retrieval_sources:
+                    source_badges.append("📚 RAG")
+                source_badge_text = " | ".join(source_badges)
 
-                st.markdown(f"{status_icon} {priority_colors[task.priority]} **{task.title}**{recurring_badge}")
+                st.markdown(
+                    f"{status_icon} {priority_colors[task.priority]} **{task.title}**{recurring_badge}  "
+                    f"<span style='font-size:0.85em; color:#555;'>[{source_badge_text}]</span>",
+                    unsafe_allow_html=True,
+                )
 
                 # Enhanced details with time context
                 details_parts = [
