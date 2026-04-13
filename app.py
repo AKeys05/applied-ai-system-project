@@ -1,6 +1,6 @@
 import streamlit as st
 import datetime
-from pawpal_system import Owner, Pet, Task, Priority, Scheduler, Frequency
+from pawpal_system import Owner, Pet, Task, Priority, Scheduler, Frequency, ScheduleConstraint
 
 st.set_page_config(page_title="PawPal+", page_icon="🐾", layout="centered")
 
@@ -42,6 +42,45 @@ else:
         st.session_state.owner.name = owner_name
 
 owner = st.session_state.owner
+
+# Backward compatibility for sessions created before profile fields existed
+if not hasattr(owner, "timezone"):
+    owner.timezone = "Local"
+if not hasattr(owner, "availability_windows"):
+    owner.availability_windows = []
+
+owner_col1, owner_col2 = st.columns(2)
+with owner_col1:
+    owner_timezone = st.text_input("Timezone", value=owner.timezone, key="owner_timezone")
+    if owner_timezone != owner.timezone:
+        owner.set_timezone(owner_timezone)
+with owner_col2:
+    st.caption("Optional availability windows guide when scheduling can happen.")
+
+availability_col1, availability_col2, availability_col3 = st.columns(3)
+with availability_col1:
+    availability_start = st.time_input("Available from", value=datetime.time(8, 0), key="availability_start")
+with availability_col2:
+    availability_end = st.time_input("Available until", value=datetime.time(20, 0), key="availability_end")
+with availability_col3:
+    if st.button("Add Availability Window"):
+        success, error = owner.add_availability_window(availability_start, availability_end)
+        if success:
+            st.success("✅ Added availability window")
+            st.rerun()
+        else:
+            st.error(f"❌ {error}")
+
+if owner.availability_windows:
+    windows_text = ", ".join(
+        f"{start.strftime('%I:%M %p')} - {end.strftime('%I:%M %p')}"
+        for start, end in owner.availability_windows
+    )
+    st.caption(f"Owner availability: {windows_text}")
+    if st.button("Clear Availability Windows"):
+        owner.clear_availability_windows()
+        st.success("✅ Cleared owner availability windows")
+        st.rerun()
 
 # Helper function for displaying task cards
 def display_task_card(schedule_item: dict, compact: bool = False, key_suffix: str = ""):
@@ -89,6 +128,8 @@ if owner.pets:
         pets_data.append({
             "Name": pet.name,
             "Species": pet.species.capitalize(),
+            "Breed": pet.breed or "-",
+            "Activity": pet.activity_level.capitalize() if pet.activity_level else "-",
             "Tasks": len(pet.tasks)
         })
     st.table(pets_data)
@@ -97,20 +138,32 @@ else:
 
 # Add new pet
 st.markdown("#### Add a Pet")
-col1, col2 = st.columns(2)
+col1, col2, col3, col4 = st.columns(4)
 with col1:
     new_pet_name = st.text_input("Pet name", value="Mochi", key="new_pet_name")
 with col2:
     new_pet_species = st.selectbox("Species", ["dog", "cat", "bird", "rabbit", "other"], key="new_pet_species")
+with col3:
+    new_pet_breed = st.text_input("Breed", value="Mixed", key="new_pet_breed")
+with col4:
+    new_pet_activity = st.selectbox("Activity level", ["low", "medium", "high"], index=1, key="new_pet_activity")
+
+new_pet_age = st.number_input("Age (years)", min_value=0.0, max_value=40.0, value=2.0, step=0.5, key="new_pet_age")
 
 if st.button("Add Pet"):
     # Check if pet already exists
     if owner.get_pet(new_pet_name):
         st.warning(f"⚠️ A pet named '{new_pet_name}' already exists!")
     else:
-        new_pet = Pet(name=new_pet_name, species=new_pet_species)
+        new_pet = Pet(
+            name=new_pet_name,
+            species=new_pet_species,
+            breed=new_pet_breed.strip(),
+            age_years=float(new_pet_age),
+            activity_level=new_pet_activity,
+        )
         owner.add_pet(new_pet)
-        st.success(f"✅ Added {new_pet_name} the {new_pet_species}!")
+        st.success(f"✅ Added {new_pet_name} the {new_pet_species} ({new_pet_breed})!")
         st.rerun()
 
 st.divider()
@@ -142,11 +195,19 @@ else:
     # Optional time constraint
     add_constraint = st.checkbox("Add time constraint")
     time_constraint = None
+    schedule_constraint = ScheduleConstraint()
     if add_constraint:
         constraint_type = st.radio("Constraint type", ["before", "after"])
         constraint_time = st.time_input("Constraint time", value=None)
+        constraint_strength = st.selectbox("Constraint strength", ["Hard", "Soft"], index=0)
         if constraint_time:
             time_constraint = f"{constraint_type} {constraint_time.strftime('%H:%M')}"
+            if constraint_type == "before":
+                schedule_constraint.latest_end = constraint_time
+            else:
+                schedule_constraint.earliest_start = constraint_time
+            schedule_constraint.hard_constraint = constraint_strength == "Hard"
+            schedule_constraint.source = "user"
 
     # Recurring task options
     is_recurring = st.checkbox("Make this a recurring task")
@@ -187,20 +248,29 @@ else:
             pet_name=selected_pet_name,
             preferred_time=preferred_time,
             time_constraint=time_constraint,
+            schedule_constraint=schedule_constraint,
             frequency=frequency,
             scheduled_date=scheduled_date
         )
 
-        # Add task to the selected pet
-        selected_pet = owner.get_pet(selected_pet_name)
-        if selected_pet:
-            selected_pet.add_task(task)
-            # Also add to owner's task index for fast lookup
-            st.session_state.owner.task_index[task.id] = task
+        # Guardrails for invalid task settings
+        is_valid, error = task.validate_basic_fields()
+        if not is_valid:
+            st.error(f"❌ {error}")
+            st.stop()
 
+        is_valid, error = task.validate_time_settings()
+        if not is_valid:
+            st.error(f"❌ {error}")
+            st.stop()
+
+        # Add task using owner API (includes validation + indexing)
+        if owner.add_task(selected_pet_name, task):
             recurring_msg = f" (recurring {frequency.value})" if frequency else ""
             st.success(f"✅ Added task '{task_title}' for {selected_pet_name}{recurring_msg}!")
             st.rerun()
+        else:
+            st.error("❌ Could not add task. Check pet selection and constraint settings.")
 
     # Display all tasks with enhanced filtering and sorting
     st.markdown("#### Current Tasks")
@@ -364,6 +434,35 @@ with tab1:
             st.success("✅ Schedule generated!")
             st.markdown("### Today's Schedule")
             st.text(scheduler.explain_schedule())
+
+            # Show metadata that supports reliability and future RAG integration
+            with st.expander("Decision Metadata"):
+                for item in schedule:
+                    task = item['task']
+                    confidence = item.get('confidence_score', 0.0)
+                    rules = item.get('applied_rules', [])
+                    sources = item.get('retrieval_sources', [])
+                    source_text = ", ".join(sources) if sources else "-"
+                    st.caption(
+                        f"{task.title}: confidence={confidence:.2f} | "
+                        f"rules={', '.join(rules) if rules else '-'} | "
+                        f"sources={source_text}"
+                    )
+
+            reliability = scheduler.get_reliability_report()
+            with st.expander("Reliability Summary", expanded=True):
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("Overall Confidence", f"{reliability['overall_confidence']:.2f}")
+                with col2:
+                    st.metric("Scheduled", reliability['scheduled_tasks'])
+                with col3:
+                    st.metric("Unscheduled", len(reliability['unscheduled_tasks']))
+
+                if reliability['guardrail_warnings']:
+                    st.warning("Guardrail warnings:")
+                    for warning in reliability['guardrail_warnings']:
+                        st.caption(f"- {warning}")
 
             # Check for conflicts in final schedule (should be rare)
             conflicts = scheduler.detect_conflicts()

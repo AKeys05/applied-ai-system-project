@@ -1,5 +1,317 @@
-from pawpal_system import Owner, Pet, Task, Priority, Scheduler, Frequency
+from pawpal_system import Owner, Pet, Task, Priority, Scheduler, Frequency, ScheduleConstraint
 from datetime import time, date, timedelta
+
+
+def test_pet_profile_fields_are_stored():
+	"""Test that new pet profile fields are persisted on Pet instances."""
+	pet = Pet(
+		name="Rex",
+		species="Dog",
+		breed="Border Collie",
+		age_years=3.5,
+		activity_level="high",
+	)
+
+	assert pet.breed == "Border Collie"
+	assert pet.age_years == 3.5
+	assert pet.activity_level == "high"
+
+
+def test_structured_constraint_respected_when_scheduling():
+	"""Test that structured time constraints are honored by scheduler."""
+	owner = Owner("Test Owner")
+	dog = Pet(name="Rex", species="Dog")
+	owner.add_pet(dog)
+
+	# This task should never start before 9:00 AM.
+	task = Task(
+		title="Walk",
+		duration=30,
+		priority=Priority.HIGH,
+		pet_name="Rex",
+		schedule_constraint=ScheduleConstraint(earliest_start=time(9, 0), hard_constraint=True, source="user"),
+	)
+	owner.add_task("Rex", task)
+
+	scheduler = Scheduler(owner)
+	schedule = scheduler.generate_schedule()
+
+	assert len(schedule) == 1
+	assert schedule[0]['time'] is not None
+	assert schedule[0]['time'] >= time(9, 0)
+
+
+def test_schedule_includes_decision_metadata_fields():
+	"""Test that scheduler includes phase-1 decision metadata in output."""
+	owner = Owner("Test Owner")
+	dog = Pet(name="Rex", species="Dog")
+	owner.add_pet(dog)
+
+	task = Task(
+		title="Feed",
+		duration=20,
+		priority=Priority.HIGH,
+		pet_name="Rex",
+	)
+	owner.add_task("Rex", task)
+
+	scheduler = Scheduler(owner)
+	schedule = scheduler.generate_schedule()
+
+	assert len(schedule) == 1
+	item = schedule[0]
+	assert 'applied_rules' in item
+	assert 'confidence_score' in item
+	assert 'retrieval_sources' in item
+	assert isinstance(item['applied_rules'], list)
+	assert isinstance(item['confidence_score'], float)
+	assert isinstance(item['retrieval_sources'], list)
+
+
+def test_owner_availability_window_restricts_schedule():
+	"""Task scheduling should honor owner availability windows when provided."""
+	owner = Owner("Test Owner")
+	dog = Pet(name="Rex", species="Dog")
+	owner.add_pet(dog)
+	owner.add_availability_window(time(9, 0), time(11, 0))
+
+	task = Task(
+		title="Morning Walk",
+		duration=30,
+		priority=Priority.HIGH,
+		pet_name="Rex",
+		preferred_time=time(8, 0),
+	)
+	assert owner.add_task("Rex", task) == True
+
+	scheduler = Scheduler(owner)
+	schedule = scheduler.generate_schedule()
+
+	assert len(schedule) == 1
+	assert schedule[0]['time'] is not None
+	assert schedule[0]['time'] >= time(9, 0)
+	assert "owner_availability" in schedule[0]['applied_rules']
+
+
+def test_owner_rejects_invalid_task_duration():
+	"""Owner.add_task should reject invalid task inputs as a guardrail."""
+	owner = Owner("Test Owner")
+	dog = Pet(name="Rex", species="Dog")
+	owner.add_pet(dog)
+
+	invalid_task = Task(
+		title="Invalid",
+		duration=0,
+		priority=Priority.HIGH,
+		pet_name="Rex",
+	)
+
+	assert owner.add_task("Rex", invalid_task) == False
+	assert len(owner.get_all_tasks()) == 0
+
+
+def test_consistent_output_for_sample_border_collie_input():
+	"""Repeated schedule generation should remain consistent for fixed input."""
+	owner = Owner("Jordan")
+	owner.set_timezone("US/Pacific")
+	owner.add_availability_window(time(7, 0), time(12, 0))
+
+	dog = Pet(name="Mochi", species="Dog", breed="Border Collie", activity_level="high")
+	owner.add_pet(dog)
+
+	walk = Task(
+		title="Morning Walk",
+		duration=45,
+		priority=Priority.HIGH,
+		pet_name="Mochi",
+		time_constraint="before 09:00",
+	)
+	feed = Task(
+		title="Breakfast",
+		duration=15,
+		priority=Priority.HIGH,
+		pet_name="Mochi",
+	)
+	enrich = Task(
+		title="Enrichment",
+		duration=30,
+		priority=Priority.MEDIUM,
+		pet_name="Mochi",
+	)
+
+	assert owner.add_task("Mochi", walk) == True
+	assert owner.add_task("Mochi", feed) == True
+	assert owner.add_task("Mochi", enrich) == True
+
+	scheduler = Scheduler(owner)
+	first = scheduler.generate_schedule()
+	second = scheduler.generate_schedule()
+
+	first_signature = [(item['task'].title, item['time']) for item in first]
+	second_signature = [(item['task'].title, item['time']) for item in second]
+
+	assert first_signature == second_signature
+
+
+def test_reliability_report_has_expected_fields():
+	"""Scheduler should expose a reliability report for guardrail and confidence tracking."""
+	owner = Owner("Jordan")
+	dog = Pet(name="Mochi", species="Dog")
+	owner.add_pet(dog)
+	owner.add_availability_window(time(9, 0), time(10, 0))
+
+	task = Task(
+		title="Walk",
+		duration=30,
+		priority=Priority.HIGH,
+		pet_name="Mochi",
+	)
+	owner.add_task("Mochi", task)
+
+	scheduler = Scheduler(owner)
+	scheduler.generate_schedule()
+	report = scheduler.get_reliability_report()
+
+	assert 'total_tasks' in report
+	assert 'scheduled_tasks' in report
+	assert 'unscheduled_tasks' in report
+	assert 'overall_confidence' in report
+	assert 'low_confidence_tasks' in report
+	assert 'guardrail_warnings' in report
+	assert isinstance(report['overall_confidence'], float)
+	assert isinstance(report['guardrail_warnings'], list)
+
+
+def test_consistent_output_for_sample_french_bulldog_input():
+	"""Fixed French Bulldog scenario should produce stable schedule output across runs."""
+	owner = Owner("Jordan")
+	owner.add_availability_window(time(7, 0), time(21, 0))
+
+	dog = Pet(name="Poppy", species="Dog", breed="French Bulldog", activity_level="medium")
+	owner.add_pet(dog)
+
+	meds = Task(
+		title="Medication",
+		duration=10,
+		priority=Priority.HIGH,
+		pet_name="Poppy",
+		time_constraint="after 08:00",
+	)
+	feed = Task(
+		title="Breakfast",
+		duration=15,
+		priority=Priority.HIGH,
+		pet_name="Poppy",
+	)
+	walk = Task(
+		title="Short Walk",
+		duration=30,
+		priority=Priority.MEDIUM,
+		pet_name="Poppy",
+	)
+
+	owner.add_task("Poppy", meds)
+	owner.add_task("Poppy", feed)
+	owner.add_task("Poppy", walk)
+
+	scheduler = Scheduler(owner)
+	first = [(item['task'].title, item['time']) for item in scheduler.generate_schedule()]
+	second = [(item['task'].title, item['time']) for item in scheduler.generate_schedule()]
+
+	assert first == second
+
+
+def test_consistent_output_for_multi_pet_collision_input():
+	"""Multi-pet preferred-time collision should have deterministic final allocation."""
+	owner = Owner("Jordan")
+	owner.add_availability_window(time(7, 0), time(12, 0))
+
+	dog = Pet(name="Rex", species="Dog")
+	cat = Pet(name="Luna", species="Cat")
+	owner.add_pet(dog)
+	owner.add_pet(cat)
+
+	task1 = Task(
+		title="Dog Walk",
+		duration=30,
+		priority=Priority.HIGH,
+		pet_name="Rex",
+		preferred_time=time(8, 0),
+	)
+	task2 = Task(
+		title="Cat Feeding",
+		duration=15,
+		priority=Priority.HIGH,
+		pet_name="Luna",
+		preferred_time=time(8, 0),
+	)
+
+	owner.add_task("Rex", task1)
+	owner.add_task("Luna", task2)
+
+	scheduler = Scheduler(owner)
+	first = [(item['task'].title, item['time']) for item in scheduler.generate_schedule()]
+	second = [(item['task'].title, item['time']) for item in scheduler.generate_schedule()]
+
+	assert first == second
+
+
+def test_rag_guidance_adds_sources_and_rule_tags():
+	"""RAG integration should add source references and rag rule tags for matching tasks."""
+	owner = Owner("Jordan")
+	dog = Pet(name="Mochi", species="Dog", breed="Border Collie", activity_level="high")
+	owner.add_pet(dog)
+
+	task = Task(
+		title="Morning Enrichment",
+		duration=30,
+		priority=Priority.MEDIUM,
+		pet_name="Mochi",
+	)
+	assert owner.add_task("Mochi", task) == True
+
+	scheduler = Scheduler(owner)
+	schedule = scheduler.generate_schedule()
+
+	assert len(schedule) == 1
+	item = schedule[0]
+	assert "rag_guidance" in item['applied_rules']
+	assert len(item['retrieval_sources']) > 0
+	assert any("breed:border_collie" in source for source in item['retrieval_sources'])
+
+
+def test_rag_guidance_shapes_exercise_task_scheduling():
+	"""Breed guidance should affect exercise task timing/metadata for same-priority tasks."""
+	owner = Owner("Jordan")
+	dog = Pet(name="Mochi", species="Dog", breed="Border Collie", activity_level="high")
+	owner.add_pet(dog)
+
+	# Same base priority and duration; RAG should favor exercise/enrichment semantics.
+	groom = Task(
+		title="Groom Fur",
+		duration=30,
+		priority=Priority.MEDIUM,
+		pet_name="Mochi",
+	)
+	enrichment = Task(
+		title="Enrichment Training",
+		duration=30,
+		priority=Priority.MEDIUM,
+		pet_name="Mochi",
+	)
+
+	assert owner.add_task("Mochi", groom) == True
+	assert owner.add_task("Mochi", enrichment) == True
+
+	scheduler = Scheduler(owner)
+	schedule = scheduler.generate_schedule()
+
+	enrichment_item = next(item for item in schedule if item['task'].title == "Enrichment Training")
+	assert "rag_guidance" in enrichment_item['applied_rules']
+	assert any("breed:border_collie" in source for source in enrichment_item['retrieval_sources'])
+	assert enrichment_item['time'] is not None
+	# Border Collie exercise guidance window starts at 06:30.
+	assert enrichment_item['time'] >= time(6, 30)
 
 
 def test_task_completion_status_changes():

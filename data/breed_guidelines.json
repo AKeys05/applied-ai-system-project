@@ -1,0 +1,62 @@
+{
+  "species": {
+    "dog": {
+      "source_id": "species:dog:general",
+      "rules": [
+        {
+          "task_keywords": ["walk", "exercise", "play", "enrichment"],
+          "priority_boost": 0.25,
+          "preferred_window": {
+            "start": "07:00",
+            "end": "10:00"
+          },
+          "reason": "Dogs benefit from regular physical and mental activity, especially earlier in the day."
+        }
+      ]
+    },
+    "cat": {
+      "source_id": "species:cat:general",
+      "rules": [
+        {
+          "task_keywords": ["play", "enrichment"],
+          "priority_boost": 0.2,
+          "preferred_window": {
+            "start": "08:00",
+            "end": "11:00"
+          },
+          "reason": "Cats often respond well to consistent enrichment windows."
+        }
+      ]
+    }
+  },
+  "breeds": {
+    "border collie": {
+      "source_id": "breed:border_collie:v1",
+      "rules": [
+        {
+          "task_keywords": ["walk", "exercise", "run", "enrichment", "training"],
+          "priority_boost": 1.0,
+          "preferred_window": {
+            "start": "06:30",
+            "end": "09:30"
+          },
+          "reason": "Border Collies are high-energy and benefit from structured morning activity."
+        }
+      ]
+    },
+    "french bulldog": {
+      "source_id": "breed:french_bulldog:v1",
+      "rules": [
+        {
+          "task_keywords": ["walk", "exercise", "play"],
+          "priority_boost": 0.3,
+          "preferred_window": {
+            "start": "06:30",
+            "end": "11:00"
+          },
+          "reason": "French Bulldogs should avoid prolonged exertion in hotter midday windows."
+        }
+      ]
+    }
+  }
+}

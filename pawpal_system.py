@@ -1,8 +1,10 @@
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 from dataclasses import dataclass, field
 from enum import Enum
 from datetime import time, date, timedelta
 import uuid
+
+from rag.guidance_service import BreedGuidanceService
 
 class Priority(Enum):
 	"""Priority levels for tasks, making comparison easier."""
@@ -17,10 +19,22 @@ class Frequency(Enum):
 	BIWEEKLY = "biweekly"
 	MONTHLY = "monthly"
 
+
+@dataclass
+class ScheduleConstraint:
+	"""Structured scheduling constraints for a task."""
+	earliest_start: Optional[time] = None
+	latest_end: Optional[time] = None
+	hard_constraint: bool = True
+	source: str = "user"
+
 @dataclass
 class Pet:
 	name: str
 	species: str
+	breed: str = ""
+	age_years: Optional[float] = None
+	activity_level: str = "medium"
 	preferences: dict = field(default_factory=dict)
 	restrictions: List[str] = field(default_factory=list)  # e.g., ["no_midday_walks", "medication_8am"]
 	tasks: List[Task] = field(default_factory=list)  # Pet stores its own tasks
@@ -54,10 +68,25 @@ class Task:
 	is_recurring: bool = False
 	preferred_time: Optional[time] = None  # User's preferred time for task
 	time_constraint: Optional[str] = None  # e.g., "before 08:00", "after 18:00"
+	schedule_constraint: ScheduleConstraint = field(default_factory=ScheduleConstraint)
 	completed: bool = False  # Completion status
 	frequency: Optional[Frequency] = None  # Recurrence pattern (None for non-recurring tasks)
 	scheduled_date: Optional[date] = None  # The specific date this task is for
 	parent_task_id: Optional[str] = None  # Links to the original recurring task template
+	retrieval_sources: List[str] = field(default_factory=list)
+
+	def validate_basic_fields(self) -> tuple[bool, Optional[str]]:
+		"""Validate required fields and basic bounds for safe scheduling."""
+		if not self.title or not self.title.strip():
+			return False, "Task title is required."
+		if not self.pet_name or not self.pet_name.strip():
+			return False, "Pet name is required."
+		if self.duration <= 0:
+			return False, "Task duration must be greater than 0 minutes."
+		if self.schedule_constraint.earliest_start and self.schedule_constraint.latest_end:
+			if self.schedule_constraint.earliest_start >= self.schedule_constraint.latest_end:
+				return False, "Structured constraint earliest_start must be earlier than latest_end."
+		return True, None
 
 	@staticmethod
 	def parse_preferred_time(time_str: str) -> Optional[time]:
@@ -86,25 +115,29 @@ class Task:
 
 		Returns (is_valid, error_message).
 		"""
-		if not self.preferred_time or not self.time_constraint:
+		if not self.preferred_time:
 			return True, None
 
 		# Need to parse constraint - use a temporary scheduler instance
 		# This is a bit awkward but avoids circular dependencies
 		from datetime import datetime, timedelta
 
-		constraint = self.time_constraint.lower().strip()
-		earliest = None
-		latest = None
+		earliest = self.schedule_constraint.earliest_start
+		latest = self.schedule_constraint.latest_end
 
-		if "before" in constraint:
-			time_str = constraint.split("before")[1].strip()
-			hour, minute = map(int, time_str.split(":"))
-			latest = time(hour, minute)
-		elif "after" in constraint:
-			time_str = constraint.split("after")[1].strip()
-			hour, minute = map(int, time_str.split(":"))
-			earliest = time(hour, minute)
+		if self.time_constraint and not earliest and not latest:
+			constraint = self.time_constraint.lower().strip()
+			if "before" in constraint:
+				time_str = constraint.split("before")[1].strip()
+				hour, minute = map(int, time_str.split(":"))
+				latest = time(hour, minute)
+			elif "after" in constraint:
+				time_str = constraint.split("after")[1].strip()
+				hour, minute = map(int, time_str.split(":"))
+				earliest = time(hour, minute)
+
+		if not earliest and not latest:
+			return True, None
 
 		# Check if preferred time satisfies constraint
 		if earliest and self.preferred_time < earliest:
@@ -231,10 +264,17 @@ class Task:
 			is_recurring=self.is_recurring,
 			preferred_time=self.preferred_time,
 			time_constraint=self.time_constraint,
+			schedule_constraint=ScheduleConstraint(
+				earliest_start=self.schedule_constraint.earliest_start,
+				latest_end=self.schedule_constraint.latest_end,
+				hard_constraint=self.schedule_constraint.hard_constraint,
+				source=self.schedule_constraint.source,
+			),
 			completed=False,  # New task starts incomplete
 			frequency=self.frequency,
 			scheduled_date=next_date,
-			parent_task_id=self.parent_task_id or self.id  # Link to original
+			parent_task_id=self.parent_task_id or self.id,  # Link to original
+			retrieval_sources=list(self.retrieval_sources),
 		)
 
 		return new_task
@@ -286,6 +326,27 @@ class Owner:
 		self.pets: Dict[str, Pet] = {}  # Changed to dict for O(1) pet lookup
 		self.task_index: Dict[str, Task] = {}  # Task ID -> Task for O(1) task lookup
 		self.constraints: Dict[str, List[str]] = {}  # pet_name -> list of constraint descriptions
+		self.timezone: str = "Local"
+		self.availability_windows: List[tuple[time, time]] = []
+
+	def set_timezone(self, timezone: str) -> bool:
+		"""Set owner timezone string, returns True when accepted."""
+		if not timezone or not timezone.strip():
+			return False
+		self.timezone = timezone.strip()
+		return True
+
+	def add_availability_window(self, start: time, end: time) -> tuple[bool, Optional[str]]:
+		"""Add owner availability window used by scheduler."""
+		if start >= end:
+			return (False, "Availability start time must be earlier than end time.")
+		self.availability_windows.append((start, end))
+		self.availability_windows.sort(key=lambda window: window[0].strftime("%H:%M"))
+		return (True, None)
+
+	def clear_availability_windows(self) -> None:
+		"""Clear all owner availability windows."""
+		self.availability_windows = []
 
 	def add_pet(self, pet: Pet) -> None:
 		"""Add a pet to the owner's pet list."""
@@ -302,6 +363,12 @@ class Owner:
 		"""Add a task to a specific pet's task list. Returns True if successful."""
 		pet = self.get_pet(pet_name)
 		if pet:
+			is_valid, error = task.validate_basic_fields()
+			if not is_valid:
+				return False
+			is_valid, error = task.validate_time_settings()
+			if not is_valid:
+				return False
 			pet.add_task(task)
 			self.task_index[task.id] = task  # Add to index for O(1) lookup
 			return True
@@ -410,7 +477,11 @@ class Scheduler:
 	def __init__(self, owner: Owner):
 		self.owner = owner  # Links scheduler to owner
 		self.current_schedule: List[Dict] = []  # Stores generated schedule with explanations
-		# Each dict has: {'task': Task, 'time': time, 'pet_name': str, 'reason': str}
+		# Each dict includes decision metadata (rules, confidence, retrieval sources).
+		self.schedule_confidence: float = 0.0
+		self.guardrail_warnings: List[str] = []
+		self.guidance_service = BreedGuidanceService()
+		self.task_guidance: Dict[str, Dict[str, Any]] = {}
 
 	def _parse_time_constraint(self, constraint: str) -> tuple[Optional[time], Optional[time]]:
 		"""Parse time constraint string into time bounds.
@@ -442,12 +513,37 @@ class Scheduler:
 		mins = minutes % 60
 		return time(hours % 24, mins)
 
-	def _can_schedule_at(self, start_minutes: int, duration: int, constraint: Optional[str]) -> bool:
-		"""Check if a task can be scheduled at a given time considering constraints."""
-		if not constraint:
+	def _resolve_task_time_bounds(self, task: Task) -> tuple[Optional[time], Optional[time]]:
+		"""Resolve effective time bounds from structured constraint, then legacy string."""
+		if task.schedule_constraint.earliest_start or task.schedule_constraint.latest_end:
+			return task.schedule_constraint.earliest_start, task.schedule_constraint.latest_end
+
+		legacy_earliest, legacy_latest = self._parse_time_constraint(task.time_constraint)
+		if legacy_earliest or legacy_latest:
+			return legacy_earliest, legacy_latest
+
+		guidance = self.task_guidance.get(task.id, {})
+		return guidance.get('earliest_start'), guidance.get('latest_end')
+
+	def _within_owner_availability(self, start_minutes: int, duration: int) -> bool:
+		"""Check whether a task fits in at least one owner availability window."""
+		windows = getattr(self.owner, 'availability_windows', [])
+		if not windows:
 			return True
 
-		earliest, latest = self._parse_time_constraint(constraint)
+		task_start = self._minutes_to_time(start_minutes)
+		task_end = self._minutes_to_time(start_minutes + duration)
+		for window_start, window_end in windows:
+			if task_start >= window_start and task_end <= window_end:
+				return True
+		return False
+
+	def _can_schedule_at(self, start_minutes: int, duration: int, task: Task) -> bool:
+		"""Check if a task can be scheduled at a given time considering constraints."""
+		earliest, latest = self._resolve_task_time_bounds(task)
+		if not earliest and not latest:
+			return True
+
 		task_start = self._minutes_to_time(start_minutes)
 		task_end = self._minutes_to_time(start_minutes + duration)
 
@@ -489,6 +585,9 @@ class Scheduler:
 		Stores result in self.current_schedule for later explanation.
 		"""
 		self.current_schedule = []
+		self.guardrail_warnings = []
+		self.schedule_confidence = 0.0
+		self.task_guidance = {}
 
 		# Get tasks to schedule
 		if pet_name:
@@ -513,10 +612,25 @@ class Scheduler:
 		if not tasks:
 			return self.current_schedule
 
+		# Build RAG guidance context for each task.
+		for task in tasks:
+			pet = self.owner.get_pet(task.pet_name)
+			if pet:
+				self.task_guidance[task.id] = self.guidance_service.get_task_guidance(pet, task)
+			else:
+				self.task_guidance[task.id] = {
+					'priority_boost': 0.0,
+					'earliest_start': None,
+					'latest_end': None,
+					'sources': [],
+					'reasons': [],
+					'has_guidance': False,
+				}
+
 		# Sort tasks by priority (high to low), then by duration (longer first)
 		sorted_tasks = sorted(
 			tasks,
-			key=lambda t: (t.priority.value, -t.duration),
+			key=lambda t: (t.priority.value + self.task_guidance.get(t.id, {}).get('priority_boost', 0.0), -t.duration),
 			reverse=True
 		)
 
@@ -539,6 +653,18 @@ class Scheduler:
 			reason = ""
 
 			# NEW: Try preferred time first
+			applied_rules: List[str] = []
+			confidence_score = 1.0
+			guidance = self.task_guidance.get(task.id, {})
+			retrieval_sources = list(task.retrieval_sources)
+			for source in guidance.get('sources', []):
+				if source not in retrieval_sources:
+					retrieval_sources.append(source)
+
+			if guidance.get('has_guidance'):
+				applied_rules.append("rag_guidance")
+				confidence_score -= 0.03
+
 			if task.preferred_time:
 				preferred_minutes = self._time_to_minutes(task.preferred_time)
 				preferred_slot = (preferred_minutes - start_time) // slot_duration
@@ -547,7 +673,7 @@ class Scheduler:
 				if 0 <= preferred_slot <= num_slots - slots_needed:
 					if not any(time_slots[preferred_slot:preferred_slot + slots_needed]):
 						# Check constraint compatibility (if constraint exists)
-						if task.time_constraint is None or self._can_schedule_at(preferred_minutes, task.duration, task.time_constraint):
+						if self._can_schedule_at(preferred_minutes, task.duration, task) and self._within_owner_availability(preferred_minutes, task.duration):
 							# Schedule at preferred time
 							for i in range(preferred_slot, preferred_slot + slots_needed):
 								time_slots[i] = True
@@ -559,6 +685,7 @@ class Scheduler:
 							scheduled = True
 							scheduled_time = task.preferred_time
 							reason = f"Scheduled at preferred time {task.preferred_time.strftime('%I:%M %p')}"
+							applied_rules.append("preferred_time")
 
 			# Fallback: Try constraint-based or any available slot
 			if not scheduled:
@@ -568,7 +695,7 @@ class Scheduler:
 					# Check if all required consecutive slots are free
 					if not any(time_slots[slot_index:slot_index + slots_needed]):
 						# Check if it meets time constraints
-						if self._can_schedule_at(attempt_time, task.duration, task.time_constraint):
+						if self._can_schedule_at(attempt_time, task.duration, task) and self._within_owner_availability(attempt_time, task.duration):
 							# Mark slots as occupied
 							for i in range(slot_index, slot_index + slots_needed):
 								time_slots[i] = True
@@ -583,39 +710,91 @@ class Scheduler:
 							# Build reason
 							if task.preferred_time:
 								reason = f"Preferred time {task.preferred_time.strftime('%I:%M %p')} unavailable, scheduled based on {task.priority.name} priority"
+								applied_rules.append("preferred_time_fallback")
+								confidence_score -= 0.15
 							else:
 								reason = f"Scheduled based on {task.priority.name} priority"
+								applied_rules.append("priority_sort")
 							break  # Task scheduled, move to next task
 
 			# Add common reason elements and schedule entry
 			if scheduled:
-				if task.time_constraint:
-					reason += f" (constraint: {task.time_constraint})"
+				earliest, latest = self._resolve_task_time_bounds(task)
+				if earliest or latest or task.time_constraint:
+					constraint_text = task.time_constraint
+					if not constraint_text:
+						parts = []
+						if earliest:
+							parts.append(f"after {earliest.strftime('%H:%M')}")
+						if latest:
+							parts.append(f"before {latest.strftime('%H:%M')}")
+						constraint_text = " and ".join(parts)
+					reason += f" (constraint: {constraint_text})"
+					applied_rules.append("time_constraint")
+					confidence_score -= 0.05
+
+				if guidance.get('reasons'):
+					reason += f". Guidance: {'; '.join(guidance['reasons'])}"
 
 				# Check for pet restrictions
 				pet = self.owner.get_pet(task.pet_name)
 				if pet and pet.restrictions:
 					reason += f" considering pet restrictions: {', '.join(pet.restrictions)}"
+					applied_rules.append("pet_restrictions")
+					confidence_score -= 0.05
+
+				if getattr(self.owner, 'availability_windows', []):
+					applied_rules.append("owner_availability")
+					confidence_score -= 0.05
+
+				confidence_score = max(0.0, min(1.0, round(confidence_score, 2)))
+				if confidence_score < 0.6:
+					self.guardrail_warnings.append(
+						f"Low confidence for task '{task.title}' ({confidence_score:.2f})"
+					)
 
 				self.current_schedule.append({
 					'task': task,
 					'time': scheduled_time,
 					'pet_name': task.pet_name,
-					'reason': reason
+					'reason': reason,
+					'applied_rules': applied_rules,
+					'confidence_score': confidence_score,
+					'retrieval_sources': retrieval_sources,
 				})
 
 			if not scheduled:
 				# Couldn't schedule this task
-				reason = f"Could not schedule due to time constraints or conflicts"
+				reason = "Could not schedule due to time constraints, owner availability, or conflicts"
+				if guidance.get('reasons'):
+					reason += f". Guidance considered: {'; '.join(guidance['reasons'])}"
+				self.guardrail_warnings.append(f"Task '{task.title}' is unscheduled")
 				self.current_schedule.append({
 					'task': task,
 					'time': None,
 					'pet_name': task.pet_name,
-					'reason': reason
+					'reason': reason,
+					'applied_rules': ["unscheduled"],
+					'confidence_score': 0.0,
+					'retrieval_sources': retrieval_sources,
 				})
 
 		# Sort schedule by time
 		self.current_schedule.sort(key=lambda x: self._time_to_minutes(x['time']) if x['time'] else 9999)
+
+		scheduled_items = [item for item in self.current_schedule if item['time'] is not None]
+		if scheduled_items:
+			self.schedule_confidence = round(
+				sum(item.get('confidence_score', 0.0) for item in scheduled_items) / len(scheduled_items),
+				2,
+			)
+		else:
+			self.schedule_confidence = 0.0
+
+		if self.schedule_confidence < 0.6 and self.current_schedule:
+			self.guardrail_warnings.append(
+				f"Overall schedule confidence is low ({self.schedule_confidence:.2f})"
+			)
 
 		return self.current_schedule
 
@@ -635,6 +814,9 @@ class Scheduler:
 			scheduled_time = item['time']
 			pet_name = item['pet_name']
 			reason = item['reason']
+			confidence = item.get('confidence_score')
+			applied_rules = item.get('applied_rules', [])
+			retrieval_sources = item.get('retrieval_sources', [])
 
 			# Show completion status
 			status_indicator = "✅ COMPLETED - " if task.completed else ""
@@ -649,6 +831,13 @@ class Scheduler:
 			explanation += f"   Duration: {task.duration} minutes\n"
 			explanation += f"   Priority: {task.priority.name}\n"
 			explanation += f"   Why: {reason}\n\n"
+			if confidence is not None:
+				explanation += f"   Confidence: {confidence:.2f}\n"
+			if applied_rules:
+				explanation += f"   Rules: {', '.join(applied_rules)}\n"
+			if retrieval_sources:
+				explanation += f"   Sources: {', '.join(retrieval_sources)}\n"
+			explanation += "\n"
 
 		# Add summary
 		scheduled_count = sum(1 for item in self.current_schedule if item['time'] is not None)
@@ -656,11 +845,38 @@ class Scheduler:
 
 		explanation += f"=== Summary ===\n"
 		explanation += f"Scheduled: {scheduled_count}/{total_count} tasks\n"
+		explanation += f"Schedule confidence: {self.schedule_confidence:.2f}\n"
 
 		if scheduled_count < total_count:
 			explanation += f"⚠️ {total_count - scheduled_count} task(s) could not be scheduled\n"
+		if self.guardrail_warnings:
+			explanation += "Guardrails:\n"
+			for warning in self.guardrail_warnings:
+				explanation += f"- {warning}\n"
 
 		return explanation
+
+	def get_reliability_report(self) -> Dict[str, Any]:
+		"""Return reliability signals for UI and evaluation scripts."""
+		low_confidence_tasks = [
+			{
+				'task': item['task'].title,
+				'confidence_score': item.get('confidence_score', 0.0),
+			}
+			for item in self.current_schedule
+			if item.get('confidence_score', 0.0) < 0.6
+		]
+
+		unscheduled = [item['task'].title for item in self.current_schedule if item['time'] is None]
+
+		return {
+			'total_tasks': len(self.current_schedule),
+			'scheduled_tasks': len([item for item in self.current_schedule if item['time'] is not None]),
+			'unscheduled_tasks': unscheduled,
+			'overall_confidence': self.schedule_confidence,
+			'low_confidence_tasks': low_confidence_tasks,
+			'guardrail_warnings': list(self.guardrail_warnings),
+		}
 
 	def validate_schedule(self, schedule: List[Dict]) -> tuple[bool, List[str]]:
 		"""Validate a schedule against constraints.
@@ -712,8 +928,8 @@ class Scheduler:
 				continue
 
 			task = item['task']
-			if task.time_constraint:
-				earliest, latest = self._parse_time_constraint(task.time_constraint)
+			earliest, latest = self._resolve_task_time_bounds(task)
+			if earliest or latest:
 				task_time = item['time']
 				task_end_minutes = self._time_to_minutes(task_time) + task.duration
 				task_end_time = self._minutes_to_time(task_end_minutes)
@@ -727,6 +943,16 @@ class Scheduler:
 					violations.append(
 						f"Task '{task.title}' ends at {task_end_time.strftime('%I:%M %p')} "
 						f"violates constraint: {task.time_constraint}"
+					)
+
+			# Check owner availability windows
+			if getattr(self.owner, 'availability_windows', []):
+				task_time = item['time']
+				task_end_minutes = self._time_to_minutes(task_time) + task.duration
+				if not self._within_owner_availability(self._time_to_minutes(task_time), task.duration):
+					violations.append(
+						f"Task '{task.title}' scheduled at {task_time.strftime('%I:%M %p')} "
+						f"falls outside owner availability windows"
 					)
 
 		return len(violations) == 0, violations
