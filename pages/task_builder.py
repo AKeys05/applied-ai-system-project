@@ -2,9 +2,10 @@ import datetime
 
 import streamlit as st
 
-from pawpal_system import Frequency, Priority, RoutineProfile, ScheduleConstraint, Task
+from pawpal_system import Frequency, Priority, RoutineProfile, ScheduleConstraint, Scheduler, Task
 from ui_shared import (
     init_app_state,
+    mark_schedule_stale,
     render_sidebar_guidance,
     render_workflow_progress,
     routine_ready,
@@ -194,6 +195,7 @@ with st.form("task_routine_builder_form"):
             replace_existing=regenerate_mode,
         )
         if success:
+            mark_schedule_stale()
             st.success(f"✅ Generated {tasks_created} tasks for {routine_pet_name}.")
             st.session_state.workflow_phase = "review"
             st.rerun()
@@ -214,51 +216,122 @@ generated_tasks = [
 ]
 if generated_tasks:
     st.markdown("#### Review Generated Tasks")
-    st.caption("Adjust generated tasks before schedule generation. You can skip, set preferred time, and lock time.")
-    for task in generated_tasks:
-        c1, c2, c3 = st.columns([3, 1, 2])
-        with c1:
-            status = "⏭️ Skipped" if task.skipped else "✅ Included"
-            lock_status = "🔒 Locked" if task.locked_preferred_time else "🔓 Flexible"
-            preferred_label = task.preferred_time.strftime("%I:%M %p") if task.preferred_time else "-"
-            st.caption(f"{task.title} | {status} | {lock_status} | preferred: {preferred_label}")
-        with c2:
-            if task.skipped:
-                if st.button("Unskip", key=f"task_unskip_{task.id}"):
-                    owner.edit_task(task.id, skipped=False)
-                    st.rerun()
-            else:
-                if st.button("Skip", key=f"task_skip_{task.id}"):
-                    owner.edit_task(task.id, skipped=True)
-                    st.rerun()
-        with c3:
-            lock_time = st.time_input(
-                "Preferred",
-                value=task.preferred_time or datetime.time(8, 0),
-                key=f"task_lock_time_{task.id}",
-            )
-            if task.locked_preferred_time:
-                if st.button("Unlock", key=f"task_unlock_{task.id}"):
-                    owner.edit_task(task.id, locked_preferred_time=False)
-                    st.rerun()
-            else:
-                if st.button("Set + Lock", key=f"task_lock_{task.id}"):
-                    owner.edit_task(task.id, preferred_time=lock_time, locked_preferred_time=True)
-                    st.rerun()
+    st.caption("Use the two-step flow: configure each generated task, then confirm and generate the schedule.")
 
-    if st.button("Continue to Schedule", key="task_continue_to_schedule"):
+    review_step_key = f"task_review_step_{routine_pet_name}"
+    if review_step_key not in st.session_state:
+        st.session_state[review_step_key] = "Step 1: Configure Tasks"
+
+    selected_review_step = st.radio(
+        "Review workflow",
+        ["Step 1: Configure Tasks", "Step 2: Confirm + Generate"],
+        horizontal=True,
+        key=review_step_key,
+    )
+
+    if selected_review_step == "Step 1: Configure Tasks":
+        st.info("Changes only apply when you click Save for each task.")
+        for task in generated_tasks:
+            with st.container(border=True):
+                st.markdown(f"**{task.title}**")
+                status = "Skipped" if task.skipped else "Included"
+                preferred = task.preferred_time.strftime("%I:%M %p") if task.preferred_time else "None"
+                lock_text = "Locked" if task.locked_preferred_time else "Flexible"
+                st.caption(f"Current: {status} | Preference: {preferred} | Mode: {lock_text}")
+
+                if task.preferred_time is None:
+                    initial_mode = "No preference"
+                elif task.locked_preferred_time:
+                    initial_mode = "Locked time"
+                else:
+                    initial_mode = "Flexible preference"
+
+                with st.form(key=f"task_review_form_{task.id}"):
+                    include_task = st.checkbox("Include in schedule", value=not task.skipped)
+                    preference_mode = st.selectbox(
+                        "Time preference mode",
+                        ["No preference", "Flexible preference", "Locked time"],
+                        index=["No preference", "Flexible preference", "Locked time"].index(initial_mode),
+                    )
+                    preferred_time_value = st.time_input(
+                        "Preferred time",
+                        value=task.preferred_time or datetime.time(8, 0),
+                        disabled=preference_mode == "No preference",
+                    )
+
+                    if preference_mode == "No preference":
+                        st.caption("Scheduler can place this task in any valid slot.")
+                    elif preference_mode == "Flexible preference":
+                        st.caption("Scheduler will try this time first, then fallback if needed.")
+                    else:
+                        st.caption("Scheduler must use this time or leave the task unscheduled.")
+
+                    saved = st.form_submit_button("Save")
+                    if saved:
+                        update_fields = {
+                            "skipped": not include_task,
+                        }
+                        if preference_mode == "No preference":
+                            update_fields["preferred_time"] = None
+                            update_fields["locked_preferred_time"] = False
+                        elif preference_mode == "Flexible preference":
+                            update_fields["preferred_time"] = preferred_time_value
+                            update_fields["locked_preferred_time"] = False
+                        else:
+                            update_fields["preferred_time"] = preferred_time_value
+                            update_fields["locked_preferred_time"] = True
+
+                        owner.edit_task(task.id, **update_fields)
+                        mark_schedule_stale()
+                        st.success(f"Saved preferences for {task.title}.")
+                        st.rerun()
+
+        if st.button("Continue to Confirmation", key="task_continue_to_confirmation"):
+            st.session_state[review_step_key] = "Step 2: Confirm + Generate"
+            st.rerun()
+    else:
         included_count = len([task for task in generated_tasks if not task.skipped])
         skipped_count = len([task for task in generated_tasks if task.skipped])
         locked_count = len([task for task in generated_tasks if task.locked_preferred_time])
-        st.session_state.schedule_handoff_summary = {
-            "pet_name": routine_pet_name,
-            "included": included_count,
-            "skipped": skipped_count,
-            "locked": locked_count,
-        }
-        st.session_state.workflow_phase = "scheduling"
-        st.session_state.auto_generate_daily_schedule = True
-        st.switch_page("pages/schedule.py")
+        flexible_count = len(
+            [task for task in generated_tasks if task.preferred_time is not None and not task.locked_preferred_time]
+        )
+
+        c1, c2, c3, c4 = st.columns(4)
+        with c1:
+            st.metric("Included", included_count)
+        with c2:
+            st.metric("Skipped", skipped_count)
+        with c3:
+            st.metric("Locked", locked_count)
+        with c4:
+            st.metric("Flexible", flexible_count)
+
+        review_scheduler = Scheduler(owner)
+        conflict_warnings = review_scheduler.detect_preferred_time_conflicts()
+        if conflict_warnings:
+            st.warning("Potential preferred-time conflicts were detected:")
+            for warning in conflict_warnings:
+                st.caption(f"- {warning}")
+
+        st.caption("Completion actions are managed below in Current Tasks (execution step).")
+
+        back_col, generate_col = st.columns([1, 2])
+        with back_col:
+            if st.button("Back to Step 1", key="task_back_to_step1"):
+                st.session_state[review_step_key] = "Step 1: Configure Tasks"
+                st.rerun()
+        with generate_col:
+            if st.button("Generate Schedule from Reviewed Tasks", key="task_continue_to_schedule"):
+                st.session_state.schedule_handoff_summary = {
+                    "pet_name": routine_pet_name,
+                    "included": included_count,
+                    "skipped": skipped_count,
+                    "locked": locked_count,
+                }
+                st.session_state.workflow_phase = "scheduling"
+                st.session_state.auto_generate_daily_schedule = True
+                st.switch_page("pages/schedule.py")
 
 st.divider()
 with st.expander("➕ Advanced: Manual Task Entry", expanded=False):
@@ -336,6 +409,7 @@ with st.expander("➕ Advanced: Manual Task Entry", expanded=False):
 
         if owner.add_task(selected_pet_name, task):
             recurring_msg = f" (recurring {frequency.value})" if frequency else ""
+            mark_schedule_stale()
             st.success(f"✅ Added task '{task_title}' for {selected_pet_name}{recurring_msg}!")
             st.rerun()
         else:
@@ -403,9 +477,10 @@ else:
             st.progress(duration_pct, text=f"{task.duration} minutes")
 
         with col2:
-            if not task.completed and st.button("✓ Complete", key=f"task_complete_{task.id}"):
+            if not task.completed and st.button("Mark Done", key=f"task_complete_{task.id}"):
                 success, next_task = owner.complete_task(task.id)
                 if success:
+                    mark_schedule_stale()
                     if next_task:
                         st.success(f"✅ Completed! Next: {next_task.scheduled_date}")
                     else:

@@ -6,6 +6,7 @@ from pawpal_system import Pet
 from ui_shared import (
     get_breed_options_for_species,
     init_app_state,
+    mark_schedule_stale,
     render_sidebar_guidance,
     render_workflow_progress,
     sync_workflow_phase,
@@ -47,6 +48,7 @@ with owner_col1:
     owner_timezone = st.text_input("Timezone", value=owner.timezone, key="home_owner_timezone")
     if owner_timezone != owner.timezone:
         owner.set_timezone(owner_timezone)
+        mark_schedule_stale()
 with owner_col2:
     st.caption("Optional availability windows guide when scheduling can happen.")
 
@@ -59,6 +61,7 @@ with availability_col3:
     if st.button("Add Availability Window", key="home_add_availability_window"):
         success, error = owner.add_availability_window(availability_start, availability_end)
         if success:
+            mark_schedule_stale()
             st.success("✅ Added availability window")
             st.rerun()
         else:
@@ -72,6 +75,7 @@ if owner.availability_windows:
     st.caption(f"Owner availability: {windows_text}")
     if st.button("Clear Availability Windows", key="home_clear_availability_windows"):
         owner.clear_availability_windows()
+        mark_schedule_stale()
         st.success("✅ Cleared owner availability windows")
         st.rerun()
 
@@ -92,6 +96,16 @@ if owner.pets:
             }
         )
     st.table(pets_data)
+
+    legacy_species_pets = [
+        pet.name for pet in owner.pets.values() if pet.species not in {"dog", "cat"}
+    ]
+    if legacy_species_pets:
+        st.warning(
+            "Scheduling intelligence is optimized for dog/cat. "
+            "Legacy pets currently outside this scope: "
+            f"{', '.join(legacy_species_pets)}."
+        )
 else:
     st.info("No pets added yet. Add your first pet below!")
 
@@ -100,9 +114,7 @@ col1, col2, col3, col4 = st.columns(4)
 with col1:
     new_pet_name = st.text_input("Pet name", value="Mochi", key="home_new_pet_name")
 with col2:
-    new_pet_species = st.selectbox(
-        "Species", ["dog", "cat", "bird", "rabbit", "other"], key="home_new_pet_species"
-    )
+    new_pet_species = st.selectbox("Species", ["dog", "cat"], key="home_new_pet_species")
 with col3:
     breed_options = get_breed_options_for_species(new_pet_species)
     new_pet_breed_choice = st.selectbox("Breed", breed_options, key="home_new_pet_breed_choice")
@@ -133,5 +145,6 @@ if st.button("Add Pet", key="home_add_pet"):
             activity_level=new_pet_activity,
         )
         owner.add_pet(new_pet)
+        mark_schedule_stale()
         st.success(f"✅ Added {new_pet_name} the {new_pet_species} ({new_pet_breed})!")
         st.rerun()

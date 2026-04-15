@@ -1,10 +1,109 @@
 import datetime
+import hashlib
 import json
 from pathlib import Path
+from typing import Any
 
 import streamlit as st
 
 from pawpal_system import Owner, Priority
+
+
+def _serialize_for_fingerprint(value: Any) -> Any:
+    if isinstance(value, datetime.time):
+        return value.strftime("%H:%M")
+    if isinstance(value, datetime.date):
+        return value.isoformat()
+    if isinstance(value, list):
+        return [_serialize_for_fingerprint(item) for item in value]
+    if isinstance(value, tuple):
+        return [_serialize_for_fingerprint(item) for item in value]
+    if isinstance(value, dict):
+        return {
+            str(key): _serialize_for_fingerprint(item)
+            for key, item in sorted(value.items(), key=lambda kv: str(kv[0]))
+        }
+    if hasattr(value, "name") and hasattr(value.__class__, "__mro__"):
+        enum_class = value.__class__.__mro__[0].__name__.lower()
+        if enum_class in {"priority", "frequency"}:
+            return getattr(value, "name", str(value))
+    return value
+
+
+def compute_schedule_input_fingerprint(owner_obj: Owner) -> str:
+    pets_payload = []
+    for pet in sorted(owner_obj.pets.values(), key=lambda p: p.name):
+        pet_payload = {
+            "name": pet.name,
+            "species": pet.species,
+            "breed": pet.breed,
+            "activity_level": pet.activity_level,
+            "restrictions": list(pet.restrictions),
+            "tasks": [],
+        }
+        for task in sorted(pet.tasks, key=lambda t: t.id):
+            pet_payload["tasks"].append(
+                {
+                    "id": task.id,
+                    "title": task.title,
+                    "duration": task.duration,
+                    "priority": task.priority.name,
+                    "preferred_time": task.preferred_time,
+                    "time_constraint": task.time_constraint,
+                    "schedule_constraint": {
+                        "earliest_start": task.schedule_constraint.earliest_start,
+                        "latest_end": task.schedule_constraint.latest_end,
+                        "hard_constraint": task.schedule_constraint.hard_constraint,
+                        "source": task.schedule_constraint.source,
+                    },
+                    "completed": task.completed,
+                    "frequency": task.frequency.name if task.frequency else None,
+                    "scheduled_date": task.scheduled_date,
+                    "task_source": task.task_source,
+                    "skipped": task.skipped,
+                    "locked_preferred_time": task.locked_preferred_time,
+                }
+            )
+        pets_payload.append(pet_payload)
+
+    owner_payload = {
+        "timezone": owner_obj.timezone,
+        "availability_windows": list(owner_obj.availability_windows),
+        "pets": pets_payload,
+    }
+    normalized_payload = _serialize_for_fingerprint(owner_payload)
+    payload_str = json.dumps(normalized_payload, sort_keys=True)
+    return hashlib.sha256(payload_str.encode("utf-8")).hexdigest()
+
+
+def mark_schedule_stale() -> None:
+    st.session_state.schedule_state["stale"] = True
+
+
+def update_schedule_fingerprint(owner_obj: Owner) -> str:
+    fingerprint = compute_schedule_input_fingerprint(owner_obj)
+    st.session_state.schedule_state["input_fingerprint"] = fingerprint
+    return fingerprint
+
+
+def clear_schedule_cache(owner_obj: Owner) -> str:
+    st.session_state.schedule_state["daily"] = {
+        "date": None,
+        "schedule": None,
+        "reliability": None,
+        "generated_at": None,
+        "input_fingerprint": None,
+    }
+    st.session_state.schedule_state["weekly"] = {
+        "start_date": None,
+        "end_date": None,
+        "daily_results": {},
+        "summary": None,
+        "generated_at": None,
+        "input_fingerprint": None,
+    }
+    st.session_state.schedule_state["stale"] = False
+    return update_schedule_fingerprint(owner_obj)
 
 
 def init_app_state() -> Owner:
@@ -16,6 +115,26 @@ def init_app_state() -> Owner:
         st.session_state.last_routine_profiles = {}
     if "schedule_handoff_summary" not in st.session_state:
         st.session_state.schedule_handoff_summary = None
+    if "schedule_state" not in st.session_state:
+        st.session_state.schedule_state = {
+            "daily": {
+                "date": None,
+                "schedule": None,
+                "reliability": None,
+                "generated_at": None,
+                "input_fingerprint": None,
+            },
+            "weekly": {
+                "start_date": None,
+                "end_date": None,
+                "daily_results": {},
+                "summary": None,
+                "generated_at": None,
+                "input_fingerprint": None,
+            },
+            "stale": False,
+            "input_fingerprint": None,
+        }
     if "owner" not in st.session_state:
         st.session_state.owner = Owner("Jordan")
 
@@ -24,6 +143,9 @@ def init_app_state() -> Owner:
         owner.timezone = "Local"
     if not hasattr(owner, "availability_windows"):
         owner.availability_windows = []
+
+    if st.session_state.schedule_state.get("input_fingerprint") is None:
+        update_schedule_fingerprint(owner)
     return owner
 
 
