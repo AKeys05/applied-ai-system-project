@@ -86,24 +86,40 @@ def _guidance_badge(rag_active: bool, guidance_source: str) -> str:
     return "🔍 Rules Match"
 
 
-def _rag_impact_line(item: dict) -> str:
-    task = item["task"]
-    guidance_profile = item.get("guidance_profile", {})
-    sources = item.get("retrieval_sources", [])
-    reasons = item.get("reason", "")
-    rag_active = bool(guidance_profile.get("rag_active"))
+_PRIORITY_ICON = {"HIGH": "🔴", "MEDIUM": "🟡", "LOW": "🟢"}
 
-    if not rag_active:
-        return f"{task.title}: no active RAG guidance was applied for this task."
+_RULE_LABELS: dict[str, str] = {
+    "preferred_time": "preferred time honored",
+    "preferred_time_fallback": "rescheduled from preferred time",
+    "priority_sort": "placed by priority",
+    "time_constraint": "time constraint applied",
+    "owner_availability": "within owner hours",
+    "pet_restrictions": "pet restrictions considered",
+    "rag_guidance": "AI guidance applied",
+    "rag_fallback_low_confidence": "AI guidance low confidence",
+    "locked_preferred_time": "locked to preferred time",
+}
 
-    source_text = ", ".join(sources) if sources else "retrieved guidance"
-    if "Scheduled at preferred time" in reasons:
-        return f"{task.title}: RAG supported preferred-time placement using {source_text}."
-    if "constraint:" in reasons:
-        return f"{task.title}: RAG narrowed time windows and influenced placement using {source_text}."
-    if "priority" in reasons:
-        return f"{task.title}: RAG adjusted priority and ordering using {source_text}."
-    return f"{task.title}: RAG guidance from {source_text} contributed to this schedule decision."
+
+def _readable_rules(rules: list) -> list:
+    return [_RULE_LABELS.get(r, r) for r in rules if r not in ("unscheduled", "locked_preferred_time")]
+
+
+def _clean_sources(sources: list) -> list:
+    cleaned = []
+    for s in sources:
+        parts = s.split(":")
+        cleaned.append(parts[1].replace("_", " ").title() if len(parts) >= 2 else s)
+    return cleaned
+
+
+def _confidence_label(score: float) -> str:
+    pct = int(score * 100)
+    if score >= 0.8:
+        return f"Confidence {pct}% · High"
+    if score >= 0.6:
+        return f"Confidence {pct}% · Fair"
+    return f"Confidence {pct}% · Low"
 
 
 def _render_daily_result(daily_result: dict) -> None:
@@ -153,52 +169,82 @@ def _render_daily_result(daily_result: dict) -> None:
             guidance_profile = item.get("guidance_profile", {})
             rag_active = bool(guidance_profile.get("rag_active"))
             retrieval_confidence = float(guidance_profile.get("retrieval_confidence", 0.0))
-            source_count = len(item.get("retrieval_sources", []))
             confidence_score = float(item.get("confidence_score", 0.0))
             rules = item.get("applied_rules", [])
             sources = item.get("retrieval_sources", [])
             reason_text = item.get("reason", "")
-            energy_level = guidance_profile.get("energy_level", "-")
+            energy_level = guidance_profile.get("energy_level") or ""
             exercise_types = guidance_profile.get("preferred_exercise_types", [])
+            guidance_source = guidance_profile.get("guidance_source", "retriever")
+            priority_icon = _PRIORITY_ICON.get(task.priority.name, "")
 
             with st.container(border=True):
+                # ── Header row ────────────────────────────────────────────
                 h1, h2, h3 = st.columns([2, 5, 3])
                 with h1:
-                    st.markdown(f"**{item['time'].strftime('%I:%M %p')}**")
-                    st.caption("Scheduled")
+                    st.markdown(f"### {item['time'].strftime('%I:%M %p')}")
                 with h2:
                     st.markdown(f"**{task.title}**")
-                    st.caption(f"🐾 {task.pet_name} • {task.duration} min • {task.priority.name} priority")
-                with h3:
-                    guidance_source = guidance_profile.get("guidance_source", "retriever")
-                    st.markdown(_guidance_badge(rag_active, guidance_source))
-                    st.caption(f"Confidence {confidence_score:.2f}")
-
-                st.caption(_rag_impact_line(item))
-
-                d1, d2 = st.columns(2)
-                with d1:
-                    st.caption(f"Why this time: {reason_text}")
-                    st.caption(f"Applied rules: {', '.join(rules) if rules else '-'}")
-                with d2:
-                    st.caption(f"Retrieval confidence: {retrieval_confidence:.2f}")
-                    st.caption(f"Sources used: {source_count}")
-                    if sources:
-                        st.caption(f"Source IDs: {', '.join(sources)}")
-                    st.caption(f"Energy profile: {energy_level}")
                     st.caption(
-                        f"Suggested exercise: {', '.join(exercise_types) if exercise_types else '-'}"
+                        f"{priority_icon} {task.priority.name} priority"
+                        f"  ·  {task.duration} min"
+                        f"  ·  🐾 {task.pet_name}"
                     )
+                with h3:
+                    st.markdown(_guidance_badge(rag_active, guidance_source))
+                    st.caption(_confidence_label(confidence_score))
+
+                st.divider()
+
+                # ── Scheduling reason ─────────────────────────────────────
+                st.markdown("**Why this time**")
+                # Strip the verbose AI guidance suffix from the reason — it lives in the expander
+                short_reason = reason_text.split(". Guidance:")[0].split(". Energy profile:")[0]
+                st.write(short_reason)
+
+                # ── Details expander ──────────────────────────────────────
+                with st.expander("Details"):
+                    sched_col, ai_col = st.columns(2)
+                    with sched_col:
+                        st.markdown("**Scheduling**")
+                        readable = _readable_rules(rules)
+                        st.caption(f"Rules applied: {', '.join(readable) if readable else '—'}")
+                        st.caption(f"Schedule confidence: {_confidence_label(confidence_score)}")
+                    with ai_col:
+                        st.markdown("**AI Guidance**")
+                        st.caption(
+                            f"Source: {_guidance_badge(rag_active, guidance_source)}"
+                        )
+                        if rag_active:
+                            st.caption(f"Retrieval confidence: {retrieval_confidence:.0%}")
+                            if sources:
+                                st.caption(f"Sources: {', '.join(_clean_sources(sources))}")
+                            if energy_level:
+                                st.caption(f"Energy level: {energy_level}")
+                            if exercise_types:
+                                st.caption(f"Exercise types: {', '.join(exercise_types)}")
+                        else:
+                            st.caption("No guidance was applied for this task.")
 
         if unscheduled_items:
             st.markdown("#### Unscheduled Tasks")
             for item in unscheduled_items:
                 task = item["task"]
+                priority_icon = _PRIORITY_ICON.get(task.priority.name, "")
                 with st.container(border=True):
-                    st.markdown(f"**{task.title}**")
-                    st.caption(f"🐾 {task.pet_name} • {task.duration} min • {task.priority.name} priority")
-                    st.caption(item.get("reason", "Could not be scheduled."))
-                    st.caption(_rag_impact_line(item))
+                    h1, h2 = st.columns([5, 2])
+                    with h1:
+                        st.markdown(f"**{task.title}**")
+                        st.caption(
+                            f"{priority_icon} {task.priority.name} priority"
+                            f"  ·  {task.duration} min"
+                            f"  ·  🐾 {task.pet_name}"
+                        )
+                    with h2:
+                        st.markdown("⏸ Unscheduled")
+                    st.divider()
+                    st.markdown("**Why not scheduled**")
+                    st.write(item.get("reason", "Could not be scheduled due to time or availability constraints."))
 
     with st.expander("Narrative Summary"):
         st.text(daily_result.get("explanation", ""))

@@ -96,6 +96,8 @@ if generated_tasks:
                                 "Preferred time",
                                 value=task.preferred_time or datetime.time(8, 0),
                                 key=f"r_time_{task.id}",
+                                disabled=(initial_mode == "No preference"),
+                                help="Switch timing to Flexible or Locked to set a time.",
                             )
                     task_configs[task.id] = (include, mode, time_val)
 

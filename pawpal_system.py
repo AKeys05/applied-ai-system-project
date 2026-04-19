@@ -734,6 +734,54 @@ class Scheduler:
 		mins = minutes % 60
 		return time(hours % 24, mins)
 
+	_CATEGORY_SPREAD: dict[str, list[int]] = {
+		"walk":      [7*60, 12*60, 17*60, 20*60],
+		"meal":      [7*60, 12*60, 18*60],
+		"medication": [8*60, 20*60],
+		"play":      [10*60, 15*60, 19*60],
+		"grooming":  [10*60, 14*60],
+		"other":     [9*60, 13*60, 17*60, 20*60],
+	}
+
+	def _task_category(self, title: str) -> str:
+		t = title.lower()
+		if any(k in t for k in ("walk", "exercise", "run", "jog", "hike")):
+			return "walk"
+		if any(k in t for k in ("meal", "feed", "food", "breakfast", "dinner", "lunch", "treat")):
+			return "meal"
+		if any(k in t for k in ("medication", "medicine", "pill", "dose", "supplement")):
+			return "medication"
+		if any(k in t for k in ("play", "train", "training", "fetch", "toy", "sociali")):
+			return "play"
+		if any(k in t for k in ("groom", "brush", "bath", "bathe", "nail", "clean")):
+			return "grooming"
+		return "other"
+
+	def _target_minute_for_task(self, task: Task, all_tasks: list) -> int:
+		"""Return the ideal minute-of-day target for a task with no preferred time."""
+		guidance = self.task_guidance.get(task.id, {})
+		if guidance.get("rag_active"):
+			earliest = guidance.get("earliest_start")
+			latest = guidance.get("latest_end")
+			if earliest and latest:
+				return (self._time_to_minutes(earliest) + self._time_to_minutes(latest)) // 2
+			if earliest:
+				return self._time_to_minutes(earliest)
+			if latest:
+				return max(6 * 60, self._time_to_minutes(latest) - task.duration)
+
+		category = self._task_category(task.title)
+		spread = self._CATEGORY_SPREAD[category]
+		same_cat_no_pref = [
+			t for t in all_tasks
+			if self._task_category(t.title) == category and not t.preferred_time
+		]
+		try:
+			pos = same_cat_no_pref.index(task)
+		except ValueError:
+			pos = 0
+		return spread[pos % len(spread)]
+
 	def _resolve_task_time_bounds(self, task: Task) -> tuple[Optional[time], Optional[time]]:
 		"""Resolve effective time bounds from structured constraint, then legacy string."""
 		if task.schedule_constraint.earliest_start or task.schedule_constraint.latest_end:
@@ -977,9 +1025,24 @@ class Scheduler:
 				})
 				continue
 
-			# Fallback: Try constraint-based or any available slot
+			# Fallback: search nearest to category/guidance target rather than greedy first-fit
 			if not scheduled:
-				for slot_index in range(num_slots - slots_needed + 1):
+				if task.preferred_time:
+					# Had a preferred time but it was unavailable — scan linearly as fallback
+					search_order = range(num_slots - slots_needed + 1)
+				else:
+					# No preference: aim for a realistic spread across the day
+					target_minute = self._target_minute_for_task(task, sorted_tasks)
+					target_slot = max(0, min(
+						(target_minute - start_time) // slot_duration,
+						num_slots - slots_needed,
+					))
+					search_order = sorted(
+						range(num_slots - slots_needed + 1),
+						key=lambda s: abs(s - target_slot),
+					)
+
+				for slot_index in search_order:
 					attempt_time = start_time + (slot_index * slot_duration)
 
 					# Check if all required consecutive slots are free
