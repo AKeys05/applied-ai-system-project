@@ -38,7 +38,168 @@ generated_tasks = [
 if notice := st.session_state.pop("_tb_generation_notice", None):
     st.success(notice)
 
-# ── STEP INDICATOR & REVIEW (shown first when tasks exist) ────────────────
+# ── CURRENT TASKS (above the review/generate block so users can review before submitting) ──
+st.markdown("#### Current Tasks")
+col1, col2, col3 = st.columns(3)
+with col1:
+    pet_options = ["All Pets"] + list(owner.pets.keys())
+    selected_pet_filter = st.selectbox("Filter by pet", pet_options, key="task_pet_filter")
+with col2:
+    sort_option = st.selectbox("Sort by", ["Time", "Priority (High to Low)", "Pet Name"], key="task_sort")
+with col3:
+    show_completed = st.checkbox("Show completed tasks inline", value=False, key="task_show_completed")
+
+st.divider()
+all_tasks = owner.get_all_tasks()
+if selected_pet_filter != "All Pets":
+    all_tasks = Task.filter_by_pet(all_tasks, selected_pet_filter)
+if not show_completed:
+    all_tasks = Task.filter_by_completion(all_tasks, completed=False)
+
+if sort_option == "Time":
+    all_tasks = Task.sort_by_time(all_tasks)
+elif sort_option == "Priority (High to Low)":
+    all_tasks = sorted(all_tasks, key=lambda t: t.priority.value, reverse=True)
+else:
+    all_tasks = sorted(all_tasks, key=lambda t: t.pet_name)
+
+if not all_tasks:
+    st.info("No tasks match your filters.")
+else:
+    priority_colors = {"HIGH": "🔴", "MEDIUM": "🟡", "LOW": "🟢"}
+    for task in all_tasks:
+        edit_key = f"_tb_editing_{task.id}"
+        confirm_key = f"_tb_confirm_delete_{task.id}"
+
+        col1, col2 = st.columns([4, 1])
+        with col1:
+            recurring_badge = f" `{task.frequency.value}`" if task.frequency else ""
+            status_icon = "✅" if task.completed else "⭕"
+            source_badges = ["🎯 Profile" if task.task_source == "profile_generated" else "✍️ Manual"]
+            if task.retrieval_sources:
+                source_badges.append("📚 RAG")
+            source_badge_text = " | ".join(source_badges)
+
+            st.markdown(
+                f"{status_icon} {priority_colors.get(task.priority.name, '⚪')} **{task.title}**{recurring_badge}  "
+                f"<span style='font-size:0.85em; color:#555;'>[{source_badge_text}]</span>",
+                unsafe_allow_html=True,
+            )
+
+            details_parts = [f"{task.duration} min", f"{task.priority.name} priority", f"🐾 {task.pet_name}"]
+            if task.preferred_time:
+                details_parts.append(f"⏰ Prefers {task.preferred_time.strftime('%I:%M %p')}")
+            if task.scheduled_date:
+                today = datetime.date.today()
+                if task.scheduled_date == today:
+                    details_parts.append("📅 Today")
+                elif task.scheduled_date < today:
+                    days_ago = (today - task.scheduled_date).days
+                    details_parts.append(f"📅 {days_ago} day{'s' if days_ago > 1 else ''} overdue")
+                else:
+                    details_parts.append(f"📅 {task.scheduled_date.strftime('%b %d')}")
+            st.caption(" • ".join(details_parts))
+
+            duration_pct = min(task.duration / 120, 1.0)
+            st.progress(duration_pct, text=f"{task.duration} minutes")
+
+        with col2:
+            if st.button("Edit", key=f"task_edit_btn_{task.id}"):
+                for k in list(st.session_state.keys()):
+                    if k.startswith("_tb_editing_") and k != edit_key:
+                        del st.session_state[k]
+                st.session_state[edit_key] = not st.session_state.get(edit_key, False)
+                st.rerun()
+
+            if not st.session_state.get(confirm_key):
+                if st.button("Delete", key=f"task_delete_btn_{task.id}"):
+                    st.session_state[confirm_key] = True
+                    st.rerun()
+            else:
+                st.warning("Delete?")
+                yes_col, no_col = st.columns(2)
+                with yes_col:
+                    if st.button("Yes", key=f"task_delete_yes_{task.id}"):
+                        owner.remove_task(task.id)
+                        st.session_state.pop(confirm_key, None)
+                        st.session_state.pop(edit_key, None)
+                        mark_schedule_stale()
+                        st.rerun()
+                with no_col:
+                    if st.button("No", key=f"task_delete_no_{task.id}"):
+                        st.session_state.pop(confirm_key, None)
+                        st.rerun()
+
+        if st.session_state.get(edit_key):
+            with st.container(border=True):
+                st.markdown(f"**Edit: {task.title}**")
+                e1, e2, e3 = st.columns(3)
+                with e1:
+                    new_title = st.text_input("Title", value=task.title, key=f"edit_title_{task.id}")
+                with e2:
+                    new_duration = st.number_input(
+                        "Duration (min)", min_value=1, max_value=240,
+                        value=task.duration, key=f"edit_duration_{task.id}"
+                    )
+                with e3:
+                    priority_names = ["low", "medium", "high"]
+                    current_priority = task.priority.name.lower()
+                    new_priority_str = st.selectbox(
+                        "Priority", priority_names,
+                        index=priority_names.index(current_priority),
+                        key=f"edit_priority_{task.id}",
+                    )
+
+                use_pref_time = st.checkbox(
+                    "Set preferred time",
+                    value=task.preferred_time is not None,
+                    key=f"edit_use_pref_{task.id}",
+                )
+                new_preferred_time = None
+                if use_pref_time:
+                    new_preferred_time = st.time_input(
+                        "Preferred time",
+                        value=task.preferred_time or datetime.time(8, 0),
+                        key=f"edit_pref_time_{task.id}",
+                    )
+
+                save_col, cancel_col = st.columns(2)
+                with save_col:
+                    if st.button("Save Changes", key=f"edit_save_{task.id}"):
+                        priority_map = {"low": Priority.LOW, "medium": Priority.MEDIUM, "high": Priority.HIGH}
+                        owner.edit_task(
+                            task.id,
+                            title=new_title,
+                            duration=int(new_duration),
+                            priority=priority_map[new_priority_str],
+                            preferred_time=new_preferred_time,
+                        )
+                        st.session_state.pop(edit_key, None)
+                        mark_schedule_stale()
+                        st.rerun()
+                with cancel_col:
+                    if st.button("Cancel", key=f"edit_cancel_{task.id}"):
+                        st.session_state.pop(edit_key, None)
+                        st.rerun()
+
+        st.divider()
+
+if not show_completed:
+    completed_tasks = [t for t in owner.get_all_tasks() if t.completed]
+    if completed_tasks:
+        with st.expander(f"📋 Completed Tasks ({len(completed_tasks)})"):
+            tasks_data = [
+                {
+                    "Pet": task.pet_name,
+                    "Task": task.title,
+                    "Priority": task.priority.name,
+                    "Date": task.scheduled_date.strftime("%Y-%m-%d") if task.scheduled_date else "-",
+                }
+                for task in completed_tasks
+            ]
+            st.table(tasks_data)
+
+# ── STEP INDICATOR & REVIEW ───────────────────────────────────────────────
 review_step_key = f"task_review_step_{routine_pet_name}"
 if review_step_key not in st.session_state:
     st.session_state[review_step_key] = 1
@@ -183,9 +344,9 @@ if generated_tasks:
         review_scheduler = Scheduler(owner)
         conflict_warnings = review_scheduler.detect_preferred_time_conflicts()
         if conflict_warnings:
-            st.warning("Potential preferred-time conflicts detected:")
-            for warning in conflict_warnings:
-                st.caption(f"- {warning}")
+            warning_lines = ["**Potential preferred-time conflicts detected:**"]
+            warning_lines += [f"- {w}" for w in conflict_warnings]
+            st.warning("\n".join(warning_lines))
 
         st.caption("Ready to generate schedule.")
 
@@ -406,175 +567,3 @@ with st.expander("➕ Advanced: Manual Task Entry", expanded=False):
             st.rerun()
         else:
             st.error("❌ Could not add task. Check pet selection and constraint settings.")
-
-st.markdown("#### Current Tasks")
-col1, col2, col3 = st.columns(3)
-with col1:
-    pet_options = ["All Pets"] + list(owner.pets.keys())
-    selected_pet_filter = st.selectbox("Filter by pet", pet_options, key="task_pet_filter")
-with col2:
-    sort_option = st.selectbox("Sort by", ["Time", "Priority (High to Low)", "Pet Name"], key="task_sort")
-with col3:
-    show_completed = st.checkbox("Show completed tasks inline", value=False, key="task_show_completed")
-
-st.divider()
-all_tasks = owner.get_all_tasks()
-if selected_pet_filter != "All Pets":
-    all_tasks = Task.filter_by_pet(all_tasks, selected_pet_filter)
-if not show_completed:
-    all_tasks = Task.filter_by_completion(all_tasks, completed=False)
-
-if sort_option == "Time":
-    all_tasks = Task.sort_by_time(all_tasks)
-elif sort_option == "Priority (High to Low)":
-    all_tasks = sorted(all_tasks, key=lambda t: t.priority.value, reverse=True)
-else:
-    all_tasks = sorted(all_tasks, key=lambda t: t.pet_name)
-
-if not all_tasks:
-    st.info("No tasks match your filters.")
-else:
-    priority_colors = {"HIGH": "🔴", "MEDIUM": "🟡", "LOW": "🟢"}
-    for task in all_tasks:
-        edit_key = f"_tb_editing_{task.id}"
-        confirm_key = f"_tb_confirm_delete_{task.id}"
-
-        col1, col2 = st.columns([4, 1])
-        with col1:
-            recurring_badge = f" `{task.frequency.value}`" if task.frequency else ""
-            status_icon = "✅" if task.completed else "⭕"
-            source_badges = ["🎯 Profile" if task.task_source == "profile_generated" else "✍️ Manual"]
-            if task.retrieval_sources:
-                source_badges.append("📚 RAG")
-            source_badge_text = " | ".join(source_badges)
-
-            st.markdown(
-                f"{status_icon} {priority_colors.get(task.priority.name, '⚪')} **{task.title}**{recurring_badge}  "
-                f"<span style='font-size:0.85em; color:#555;'>[{source_badge_text}]</span>",
-                unsafe_allow_html=True,
-            )
-
-            details_parts = [f"{task.duration} min", f"{task.priority.name} priority", f"🐾 {task.pet_name}"]
-            if task.preferred_time:
-                details_parts.append(f"⏰ Prefers {task.preferred_time.strftime('%I:%M %p')}")
-            if task.scheduled_date:
-                today = datetime.date.today()
-                if task.scheduled_date == today:
-                    details_parts.append("📅 Today")
-                elif task.scheduled_date < today:
-                    days_ago = (today - task.scheduled_date).days
-                    details_parts.append(f"📅 {days_ago} day{'s' if days_ago > 1 else ''} overdue")
-                else:
-                    details_parts.append(f"📅 {task.scheduled_date.strftime('%b %d')}")
-            st.caption(" • ".join(details_parts))
-
-            duration_pct = min(task.duration / 120, 1.0)
-            st.progress(duration_pct, text=f"{task.duration} minutes")
-
-        with col2:
-            if not task.completed and st.button("Mark Done", key=f"task_complete_{task.id}"):
-                success, next_task = owner.complete_task(task.id)
-                if success:
-                    mark_schedule_stale()
-                    if next_task:
-                        st.success(f"✅ Completed! Next: {next_task.scheduled_date}")
-                    else:
-                        st.success("✅ Task completed!")
-                    st.rerun()
-                else:
-                    st.error("❌ Failed to complete task")
-
-            if st.button("Edit", key=f"task_edit_btn_{task.id}"):
-                for k in list(st.session_state.keys()):
-                    if k.startswith("_tb_editing_") and k != edit_key:
-                        del st.session_state[k]
-                st.session_state[edit_key] = not st.session_state.get(edit_key, False)
-                st.rerun()
-
-            if not st.session_state.get(confirm_key):
-                if st.button("Delete", key=f"task_delete_btn_{task.id}"):
-                    st.session_state[confirm_key] = True
-                    st.rerun()
-            else:
-                st.warning("Delete?")
-                yes_col, no_col = st.columns(2)
-                with yes_col:
-                    if st.button("Yes", key=f"task_delete_yes_{task.id}"):
-                        owner.remove_task(task.id)
-                        st.session_state.pop(confirm_key, None)
-                        st.session_state.pop(edit_key, None)
-                        mark_schedule_stale()
-                        st.rerun()
-                with no_col:
-                    if st.button("No", key=f"task_delete_no_{task.id}"):
-                        st.session_state.pop(confirm_key, None)
-                        st.rerun()
-
-        if st.session_state.get(edit_key):
-            with st.container(border=True):
-                st.markdown(f"**Edit: {task.title}**")
-                e1, e2, e3 = st.columns(3)
-                with e1:
-                    new_title = st.text_input("Title", value=task.title, key=f"edit_title_{task.id}")
-                with e2:
-                    new_duration = st.number_input(
-                        "Duration (min)", min_value=1, max_value=240,
-                        value=task.duration, key=f"edit_duration_{task.id}"
-                    )
-                with e3:
-                    priority_names = ["low", "medium", "high"]
-                    current_priority = task.priority.name.lower()
-                    new_priority_str = st.selectbox(
-                        "Priority", priority_names,
-                        index=priority_names.index(current_priority),
-                        key=f"edit_priority_{task.id}",
-                    )
-
-                use_pref_time = st.checkbox(
-                    "Set preferred time",
-                    value=task.preferred_time is not None,
-                    key=f"edit_use_pref_{task.id}",
-                )
-                new_preferred_time = None
-                if use_pref_time:
-                    new_preferred_time = st.time_input(
-                        "Preferred time",
-                        value=task.preferred_time or datetime.time(8, 0),
-                        key=f"edit_pref_time_{task.id}",
-                    )
-
-                save_col, cancel_col = st.columns(2)
-                with save_col:
-                    if st.button("Save Changes", key=f"edit_save_{task.id}"):
-                        priority_map = {"low": Priority.LOW, "medium": Priority.MEDIUM, "high": Priority.HIGH}
-                        owner.edit_task(
-                            task.id,
-                            title=new_title,
-                            duration=int(new_duration),
-                            priority=priority_map[new_priority_str],
-                            preferred_time=new_preferred_time,
-                        )
-                        st.session_state.pop(edit_key, None)
-                        mark_schedule_stale()
-                        st.rerun()
-                with cancel_col:
-                    if st.button("Cancel", key=f"edit_cancel_{task.id}"):
-                        st.session_state.pop(edit_key, None)
-                        st.rerun()
-
-        st.divider()
-
-if not show_completed:
-    completed_tasks = [t for t in owner.get_all_tasks() if t.completed]
-    if completed_tasks:
-        with st.expander(f"📋 Completed Tasks ({len(completed_tasks)})"):
-            tasks_data = [
-                {
-                    "Pet": task.pet_name,
-                    "Task": task.title,
-                    "Priority": task.priority.name,
-                    "Date": task.scheduled_date.strftime("%Y-%m-%d") if task.scheduled_date else "-",
-                }
-                for task in completed_tasks
-            ]
-            st.table(tasks_data)

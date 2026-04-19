@@ -283,9 +283,9 @@ def _render_daily_result(daily_result: dict) -> None:
 
     conflicts = daily_result.get("conflicts", [])
     if conflicts:
-        st.error("⚠️ Final schedule conflicts detected:")
-        for conflict in conflicts:
-            st.write(f"- {conflict}")
+        conflict_lines = ["**⚠️ Final schedule conflicts detected:**"]
+        conflict_lines += [f"- {c}" for c in conflicts]
+        st.error("\n".join(conflict_lines))
     else:
         st.success("✓ No scheduling conflicts in final schedule!")
 
@@ -368,21 +368,26 @@ with tab2:
         )
 
     if trigger_weekly_generation or refresh_weekly:
-        scheduler = Scheduler(owner)
         weekly_data = {}
         for i in range(7):
             current_day = start_date + timedelta(days=i)
-            schedule = scheduler.generate_schedule(target_date=current_day)
-            weekly_data[current_day] = schedule
+            weekly_data[current_day] = _generate_daily_result(target_date=current_day)
 
-        total_tasks = sum(len(schedule) for schedule in weekly_data.values())
+        total_tasks = sum(
+            len(r.get("schedule", [])) for r in weekly_data.values()
+        )
         total_scheduled = sum(
-            sum(1 for item in schedule if item["time"] is not None) for schedule in weekly_data.values()
+            sum(1 for item in r.get("schedule", []) if item["time"] is not None)
+            for r in weekly_data.values()
+        )
+        total_conflicts = sum(
+            len(r.get("conflicts", [])) for r in weekly_data.values()
         )
         weekly_summary = {
             "total_tasks": total_tasks,
             "scheduled_tasks": total_scheduled,
             "unscheduled_tasks": total_tasks - total_scheduled,
+            "total_conflicts": total_conflicts,
         }
 
         schedule_state["weekly"] = {
@@ -427,18 +432,19 @@ with tab2:
         cols = st.columns(7)
         for idx, col in enumerate(cols):
             day = start_date + timedelta(days=idx)
-            schedule = weekly_data[day]
+            daily_result = weekly_data[day]
+            day_schedule = daily_result.get("schedule", [])
+            day_conflicts = daily_result.get("conflicts", [])
             with col:
-                if not schedule:
+                if day_conflicts:
+                    st.caption("⚠️ Conflict")
+                scheduled_tasks = [item for item in day_schedule if item["time"] is not None]
+                if not scheduled_tasks:
                     st.caption("_No tasks_")
                 else:
-                    scheduled_tasks = [item for item in schedule if item["time"] is not None]
-                    if not scheduled_tasks:
-                        st.caption("_No tasks_")
-                    else:
-                        for item in scheduled_tasks:
-                            display_task_card(item, compact=True)
-                            st.divider()
+                    for item in scheduled_tasks:
+                        display_task_card(item, compact=True)
+                        st.divider()
 
         st.markdown("---")
         st.markdown("### Weekly Summary")
@@ -446,12 +452,14 @@ with tab2:
         total_tasks = weekly_summary.get("total_tasks", 0)
         total_scheduled = weekly_summary.get("scheduled_tasks", 0)
 
-        col1, col2, col3 = st.columns(3)
+        col1, col2, col3, col4 = st.columns(4)
         with col1:
             st.metric("Total Tasks", total_tasks)
         with col2:
             st.metric("Scheduled", total_scheduled)
         with col3:
             st.metric("Unscheduled", weekly_summary.get("unscheduled_tasks", 0))
+        with col4:
+            st.metric("Days w/ Conflicts", weekly_summary.get("total_conflicts", 0))
     elif has_weekly_cache and weekly_cached.get("start_date") != start_date:
         st.caption("A cached weekly calendar exists for a different week. Click Generate Weekly Calendar to load this week.")
