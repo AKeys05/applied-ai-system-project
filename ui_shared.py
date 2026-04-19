@@ -139,7 +139,7 @@ def init_app_state() -> Owner:
         if loaded:
             st.session_state.owner, st.session_state.last_routine_profiles = loaded
         else:
-            st.session_state.owner = Owner("Jordan")
+            st.session_state.owner = Owner("")
             st.session_state.last_routine_profiles = {}
 
     if "last_routine_profiles" not in st.session_state:

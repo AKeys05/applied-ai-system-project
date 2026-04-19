@@ -475,6 +475,11 @@ with st.expander(expander_label, expanded=not bool(generated_tasks)):
                 routine_pet_name, profile, replace_existing=regenerate_mode,
             )
             if success:
+                try:
+                    from rag.ai_planner import clear_plan_cache
+                    clear_plan_cache()
+                except Exception:
+                    pass
                 mark_schedule_stale()
                 st.session_state._tb_generation_notice = (
                     f"✅ {tasks_created} tasks generated for {routine_pet_name}. "
@@ -493,7 +498,7 @@ with st.expander("➕ Advanced: Manual Task Entry", expanded=False):
 
     col1, col2, col3 = st.columns(3)
     with col1:
-        task_title = st.text_input("Task title", value="Morning walk", key="task_title")
+        task_title = st.text_input("Task title", value="", key="task_title")
     with col2:
         duration = st.number_input("Duration (minutes)", min_value=1, max_value=240, value=20, key="task_duration")
     with col3:

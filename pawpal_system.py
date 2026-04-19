@@ -416,6 +416,29 @@ class Owner:
 		pet.tasks = remaining_tasks
 		return removed_titles
 
+	@staticmethod
+	def _distribute_times(window_start: time, window_end: time, count: int) -> list[time]:
+		"""Return `count` evenly-spaced times across [window_start, window_end].
+
+		Divides the window into `count` equal slices and returns the midpoint
+		of each slice, rounded to the nearest 5 minutes.
+		"""
+		if count <= 0:
+			return []
+		start_min = window_start.hour * 60 + window_start.minute
+		end_min = window_end.hour * 60 + window_end.minute
+		if end_min <= start_min:
+			return []
+		total = end_min - start_min
+		slice_min = total / count
+		result = []
+		for i in range(count):
+			mid = start_min + slice_min * (i + 0.5)
+			rounded = round(mid / 5) * 5
+			clamped = min(int(rounded), end_min)
+			result.append(time(clamped // 60, clamped % 60))
+		return result
+
 	def generate_tasks_from_profile(self, pet_name: str, profile: RoutineProfile, replace_existing: bool = True) -> tuple[bool, int, Optional[str]]:
 		"""Generate daily routine tasks from profile preferences.
 
@@ -439,6 +462,9 @@ class Owner:
 		today = date.today()
 
 		# Walk tasks
+		walk_times = Owner._distribute_times(
+			profile.walk_window_start, profile.walk_window_end, profile.walks_per_day,
+		)
 		for idx in range(profile.walks_per_day):
 			title = "Exercise - Walk" if profile.walks_per_day == 1 else f"Exercise - Walk #{idx + 1}"
 			time_constraint, schedule_constraint = self._build_constraint_from_window(
@@ -450,6 +476,7 @@ class Owner:
 				duration=30,
 				priority=Priority.HIGH,
 				pet_name=pet_name,
+				preferred_time=walk_times[idx] if walk_times else None,
 				time_constraint=time_constraint,
 				schedule_constraint=schedule_constraint,
 				frequency=Frequency.DAILY,
@@ -461,6 +488,9 @@ class Owner:
 				created_titles.append(task.title)
 
 		# Meal tasks
+		meal_times = Owner._distribute_times(
+			profile.meal_window_start, profile.meal_window_end, profile.meals_per_day,
+		)
 		for idx in range(profile.meals_per_day):
 			title = "Feeding - Meal" if profile.meals_per_day == 1 else f"Feeding - Meal #{idx + 1}"
 			time_constraint, schedule_constraint = self._build_constraint_from_window(
@@ -472,6 +502,7 @@ class Owner:
 				duration=15,
 				priority=Priority.HIGH,
 				pet_name=pet_name,
+				preferred_time=meal_times[idx] if meal_times else None,
 				time_constraint=time_constraint,
 				schedule_constraint=schedule_constraint,
 				frequency=Frequency.DAILY,
@@ -483,8 +514,15 @@ class Owner:
 				created_titles.append(task.title)
 
 		# Play/enrichment tasks
+		play_times = Owner._distribute_times(
+			profile.play_window_start, profile.play_window_end, profile.play_sessions_per_day,
+		)
 		for idx in range(profile.play_sessions_per_day):
-			title = "Enrichment - Play Session" if profile.play_sessions_per_day == 1 else f"Enrichment - Play Session #{idx + 1}"
+			title = (
+				"Enrichment - Play Session"
+				if profile.play_sessions_per_day == 1
+				else f"Enrichment - Play Session #{idx + 1}"
+			)
 			time_constraint, schedule_constraint = self._build_constraint_from_window(
 				profile.play_window_start,
 				profile.play_window_end,
@@ -494,6 +532,7 @@ class Owner:
 				duration=20,
 				priority=Priority.MEDIUM,
 				pet_name=pet_name,
+				preferred_time=play_times[idx] if play_times else None,
 				time_constraint=time_constraint,
 				schedule_constraint=schedule_constraint,
 				frequency=Frequency.DAILY,
@@ -860,6 +899,71 @@ class Scheduler:
 		sunday = monday + timedelta(days=6)
 
 		return (monday, sunday)
+
+	def _resolve_schedule_conflicts(self, slot_duration: int = 15) -> None:
+		"""Bump non-locked tasks that overlap with a higher-priority same-pet task."""
+		# Build sorted list of scheduled items per pet
+		from collections import defaultdict
+		by_pet: dict[str, list] = defaultdict(list)
+		for item in self.current_schedule:
+			if item['time'] is not None:
+				by_pet[item['pet_name']].append(item)
+
+		for pet_items in by_pet.values():
+			# Locked tasks sort before non-locked at the same minute so they're never bumped
+			pet_items.sort(key=lambda x: (
+				self._time_to_minutes(x['time']),
+				0 if x['task'].locked_preferred_time else 1,
+			))
+			changed = True
+			max_passes = 10
+			passes = 0
+			while changed and passes < max_passes:
+				changed = False
+				passes += 1
+				for i in range(len(pet_items) - 1):
+					a = pet_items[i]
+					b = pet_items[i + 1]
+					a_end = self._time_to_minutes(a['time']) + a['task'].duration + slot_duration
+					b_start = self._time_to_minutes(b['time'])
+					if b_start < a_end:
+						# b overlaps a
+						if b['task'].locked_preferred_time:
+							# b is locked — try to bump a instead (a is guaranteed non-locked by sort)
+							if not a['task'].locked_preferred_time:
+								new_start = self._time_to_minutes(b['time']) + b['task'].duration + slot_duration
+								if new_start + a['task'].duration <= 22 * 60:
+									new_time = time(new_start // 60, new_start % 60)
+									a['time'] = new_time
+									a['reason'] = (
+										a['reason'].rstrip('.') +
+										f"; bumped to {new_time.strftime('%I:%M %p')} to resolve overlap with locked {b['task'].title}."
+									)
+									if 'conflict_resolved' not in a['applied_rules']:
+										a['applied_rules'].append('conflict_resolved')
+									pet_items.sort(key=lambda x: (
+										self._time_to_minutes(x['time']),
+										0 if x['task'].locked_preferred_time else 1,
+									))
+									changed = True
+									break
+							continue
+						new_start = a_end
+						if new_start + b['task'].duration <= 22 * 60:
+							new_time = time(new_start // 60, new_start % 60)
+							b['time'] = new_time
+							b['reason'] = (
+								b['reason'].rstrip('.') +
+								f"; bumped to {new_time.strftime('%I:%M %p')} to resolve overlap with {a['task'].title}."
+							)
+							if 'conflict_resolved' not in b['applied_rules']:
+								b['applied_rules'].append('conflict_resolved')
+							pet_items.sort(key=lambda x: (
+								self._time_to_minutes(x['time']),
+								0 if x['task'].locked_preferred_time else 1,
+							))
+							changed = True
+							break
 
 	def generate_schedule(
 		self,
@@ -1240,6 +1344,10 @@ class Scheduler:
 					'retrieval_sources': retrieval_sources,
 					'guidance_profile': guidance_profile,
 				})
+
+		# ── Conflict resolution pass ─────────────────────────────────────────────
+		# After AI planning + bitmap, bump same-pet overlaps for non-locked tasks.
+		self._resolve_schedule_conflicts(slot_duration)
 
 		# Sort schedule by time
 		self.current_schedule.sort(key=lambda x: self._time_to_minutes(x['time']) if x['time'] else 9999)

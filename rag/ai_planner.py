@@ -20,13 +20,21 @@ _PLANNER_SYSTEM = (
     "You are a daily schedule planner for pet care.\n"
     "Rules you must follow:\n"
     "1. LOCKED tasks must be scheduled at their exact specified time — no deviation allowed.\n"
-    "2. Preferred times are strong hints; try to honor them within ±30 minutes if possible.\n"
+    "2. Preferred times are firm anchors. Schedule each task within ±30 minutes of its preferred time. "
+    "Never schedule a task 2+ hours away from its preferred time just because an earlier slot is open. "
+    "For numbered tasks (#1, #2, #3), their preferred times define intended slots: "
+    "#1 is earliest, #2 is middle, #3 is latest — never reverse this ordering.\n"
     "3. RAG guidance windows are soft constraints; prefer scheduling within them when possible.\n"
     "4. Leave at least 15 minutes between consecutive tasks for the same pet.\n"
     "5. Never schedule tasks before the owner availability start or after the availability end.\n"
-    "6. Spread same-type tasks (walks, meals, play sessions) evenly across the day.\n"
-    "7. Schedule higher-priority tasks earlier in the day when no other constraints apply.\n"
+    "6. Spread same-type tasks (walks, meals, play sessions) evenly across the day. "
+    "Two meals must be at least 4 hours apart. Three walks must span morning, midday, and evening.\n"
+    "7. Schedule higher-priority tasks earlier in the day only when they have no preferred time set.\n"
     "8. If a task truly cannot fit within the available window, set scheduled_time to null.\n"
+    "9. When writing the reason for each task, describe why THIS specific task was placed at this "
+    "specific time (e.g. 'Preferred time 07:00 honored', 'Spread #2 of 3 meals to midday'). "
+    "Never write generic rule text like 'LOCKED tasks must be scheduled at their exact time' "
+    "for tasks that are not LOCKED.\n"
     "Always respond with valid JSON only."
 )
 
@@ -116,6 +124,37 @@ def _build_task_line(task, guidance: dict) -> str:
     return " | ".join(parts)
 
 
+def _build_distribution_hints(tasks: list) -> list[str]:
+    """Return explicit placement instructions for groups of repeated tasks."""
+    from collections import defaultdict
+    import re
+
+    # Group numbered tasks by (pet_name, title_prefix) e.g. ("Biscuit", "Exercise - Walk")
+    groups: dict[tuple, list] = defaultdict(list)
+    for task in tasks:
+        if task.locked_preferred_time:
+            continue
+        m = re.match(r"^(.+?)\s+#\d+$", task.title)
+        prefix = m.group(1) if m else None
+        if prefix:
+            groups[(task.pet_name, prefix)].append(task)
+
+    if not groups:
+        return []
+
+    slot_labels = {1: "morning", 2: "midday", 3: "afternoon", 4: "evening"}
+    lines = ["Distribution targets (honor these placements):"]
+    for (pet, prefix), group in sorted(groups.items(), key=lambda x: (x[0][0], x[0][1])):
+        group_sorted = sorted(group, key=lambda t: t.preferred_time or time(0, 0))
+        for idx, task in enumerate(group_sorted, start=1):
+            slot = slot_labels.get(idx, f"slot {idx}")
+            pref = task.preferred_time.strftime("%H:%M") if task.preferred_time else "unset"
+            lines.append(
+                f"  {pet} / {prefix} #{idx} → {slot} ({pref}) [task_id={task.id}]"
+            )
+    return lines
+
+
 def _build_user_message(tasks: list, task_guidance: dict, owner, target_date: date) -> str:
     lines = [
         f"Date: {target_date.isoformat()}",
@@ -128,12 +167,18 @@ def _build_user_message(tasks: list, task_guidance: dict, owner, target_date: da
         guidance = task_guidance.get(task.id, {})
         lines.append("  " + _build_task_line(task, guidance))
 
+    dist_hints = _build_distribution_hints(tasks)
+    if dist_hints:
+        lines.append("")
+        lines.extend(dist_hints)
+
     lines += [
         "",
         "Scheduling reminders:",
         "- LOCKED tasks must use their exact specified time.",
         "- 15-minute minimum gap between tasks for the same pet.",
-        "- Spread walks and meals evenly across the day.",
+        "- Spread walks and meals evenly across the day; two meals ≥4 hours apart.",
+        "- Honor preferred times within ±30 min; never reverse #1/#2/#3 ordering.",
         "- Fit all tasks within the availability window.",
         "",
         _RESPONSE_SCHEMA,

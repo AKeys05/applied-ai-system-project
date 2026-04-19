@@ -123,7 +123,7 @@ else:
 st.markdown("#### Add a Pet")
 col1, col2, col3, col4 = st.columns(4)
 with col1:
-    new_pet_name = st.text_input("Pet name", value="Mochi", key="home_new_pet_name")
+    new_pet_name = st.text_input("Pet name", value="", key="home_new_pet_name")
 with col2:
     new_pet_species = st.selectbox("Species", ["dog", "cat"], key="home_new_pet_species")
 with col3:
