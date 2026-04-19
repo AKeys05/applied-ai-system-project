@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "owner": {
+    "name": "",
+    "timezone": "Local",
+    "availability_windows": [],
+    "constraints": {},
+    "pets": []
+  },
+  "last_routine_profiles": {}
+}
