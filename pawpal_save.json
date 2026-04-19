@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "owner": {
+    "name": "Jordan",
+    "timezone": "Local",
+    "availability_windows": [],
+    "constraints": {},
+    "pets": [
+      {
+        "name": "Mochi",
+        "species": "dog",
+        "breed": "Australian Shepherd",
+        "age_years": 2.0,
+        "activity_level": "medium",
+        "preferences": {},
+        "restrictions": [],
+        "tasks": []
+      }
+    ]
+  },
+  "last_routine_profiles": {}
+}

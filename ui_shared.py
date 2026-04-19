@@ -7,6 +7,7 @@ from typing import Any
 import streamlit as st
 
 from pawpal_system import Owner, Priority
+from persistence import load_state, save_state
 
 
 def _serialize_for_fingerprint(value: Any) -> Any:
@@ -111,8 +112,6 @@ def init_app_state() -> Owner:
         st.session_state.workflow_phase = "owner_setup"
     if "auto_generate_daily_schedule" not in st.session_state:
         st.session_state.auto_generate_daily_schedule = False
-    if "last_routine_profiles" not in st.session_state:
-        st.session_state.last_routine_profiles = {}
     if "schedule_handoff_summary" not in st.session_state:
         st.session_state.schedule_handoff_summary = None
     if "schedule_state" not in st.session_state:
@@ -135,8 +134,17 @@ def init_app_state() -> Owner:
             "stale": False,
             "input_fingerprint": None,
         }
+
     if "owner" not in st.session_state:
-        st.session_state.owner = Owner("Jordan")
+        loaded = load_state()
+        if loaded:
+            st.session_state.owner, st.session_state.last_routine_profiles = loaded
+        else:
+            st.session_state.owner = Owner("Jordan")
+            st.session_state.last_routine_profiles = {}
+
+    if "last_routine_profiles" not in st.session_state:
+        st.session_state.last_routine_profiles = {}
 
     owner = st.session_state.owner
     if not hasattr(owner, "timezone"):
@@ -146,7 +154,18 @@ def init_app_state() -> Owner:
 
     if st.session_state.schedule_state.get("input_fingerprint") is None:
         update_schedule_fingerprint(owner)
+
+    _autosave_if_changed(owner)
     return owner
+
+
+def _autosave_if_changed(owner: Owner) -> None:
+    current_fp = compute_schedule_input_fingerprint(owner)
+    if current_fp != st.session_state.get("_last_saved_fingerprint"):
+        profiles = st.session_state.get("last_routine_profiles", {})
+        if save_state(owner, profiles):
+            st.session_state._last_saved_at = datetime.datetime.now()
+        st.session_state._last_saved_fingerprint = current_fp
 
 
 def owner_profile_complete(owner_obj: Owner) -> bool:
@@ -269,6 +288,11 @@ def render_sidebar_guidance(page_name: str, owner_obj: Owner) -> None:
     }
 
     with st.sidebar:
+        last_saved = st.session_state.get("_last_saved_at")
+        if last_saved:
+            st.caption(f"Saved {last_saved.strftime('%I:%M %p')}")
+        else:
+            st.caption("No save data yet.")
         st.markdown("---")
         st.markdown("### Page Overview")
         st.caption(overview_by_page.get(page_name, "Manage this page's settings and actions."))

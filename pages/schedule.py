@@ -65,6 +65,39 @@ def _generate_daily_result(target_date: datetime.date | None = None) -> dict:
     }
 
 
+def _rag_status_label(rag_active_tasks: int, total_tasks: int) -> str:
+    if total_tasks == 0:
+        return "No tasks"
+    ratio = rag_active_tasks / total_tasks
+    if ratio >= 0.75:
+        return "High"
+    if ratio >= 0.4:
+        return "Moderate"
+    if ratio > 0:
+        return "Low"
+    return "None"
+
+
+def _rag_impact_line(item: dict) -> str:
+    task = item["task"]
+    guidance_profile = item.get("guidance_profile", {})
+    sources = item.get("retrieval_sources", [])
+    reasons = item.get("reason", "")
+    rag_active = bool(guidance_profile.get("rag_active"))
+
+    if not rag_active:
+        return f"{task.title}: no active RAG guidance was applied for this task."
+
+    source_text = ", ".join(sources) if sources else "retrieved guidance"
+    if "Scheduled at preferred time" in reasons:
+        return f"{task.title}: RAG supported preferred-time placement using {source_text}."
+    if "constraint:" in reasons:
+        return f"{task.title}: RAG narrowed time windows and influenced placement using {source_text}."
+    if "priority" in reasons:
+        return f"{task.title}: RAG adjusted priority and ordering using {source_text}."
+    return f"{task.title}: RAG guidance from {source_text} contributed to this schedule decision."
+
+
 def _render_daily_result(daily_result: dict) -> None:
     st.markdown("### Today's Schedule")
 
@@ -78,29 +111,84 @@ def _render_daily_result(daily_result: dict) -> None:
                 st.info(warning)
         st.caption("The scheduler will try to resolve these conflicts automatically.")
 
-    st.text(daily_result.get("explanation", ""))
+    reliability = daily_result.get("reliability", {})
+    total_tasks = reliability.get("total_tasks", 0)
+    rag_active_tasks = reliability.get("rag_active_tasks", 0)
+    rag_fallback_count = reliability.get("rag_fallback_count", 0)
+    citation_coverage = reliability.get("citation_coverage", 0.0)
+
+    st.markdown("#### RAG Status")
+    s1, s2, s3, s4 = st.columns(4)
+    with s1:
+        st.metric("RAG Influence", _rag_status_label(rag_active_tasks, total_tasks))
+    with s2:
+        st.metric("RAG-Active Tasks", f"{rag_active_tasks}/{total_tasks}")
+    with s3:
+        st.metric("Fallback Count", rag_fallback_count)
+    with s4:
+        st.metric("Citation Coverage", f"{citation_coverage:.2f}")
 
     schedule = daily_result.get("schedule", [])
-    with st.expander("Decision Metadata"):
-        for item in schedule:
+    if schedule:
+        st.markdown("#### Daily Task Panels")
+        scheduled_items = [item for item in schedule if item.get("time") is not None]
+        unscheduled_items = [item for item in schedule if item.get("time") is None]
+
+        for item in scheduled_items:
             task = item["task"]
-            confidence = item.get("confidence_score", 0.0)
+            guidance_profile = item.get("guidance_profile", {})
+            rag_active = bool(guidance_profile.get("rag_active"))
+            retrieval_confidence = float(guidance_profile.get("retrieval_confidence", 0.0))
+            source_count = len(item.get("retrieval_sources", []))
+            confidence_score = float(item.get("confidence_score", 0.0))
             rules = item.get("applied_rules", [])
             sources = item.get("retrieval_sources", [])
-            guidance_profile = item.get("guidance_profile", {})
-            source_text = ", ".join(sources) if sources else "-"
+            reason_text = item.get("reason", "")
             energy_level = guidance_profile.get("energy_level", "-")
             exercise_types = guidance_profile.get("preferred_exercise_types", [])
-            exercise_text = ", ".join(exercise_types) if exercise_types else "-"
-            st.caption(
-                f"{task.title}: confidence={confidence:.2f} | "
-                f"rules={', '.join(rules) if rules else '-'} | "
-                f"sources={source_text} | "
-                f"energy={energy_level} | "
-                f"exercise={exercise_text}"
-            )
 
-    reliability = daily_result.get("reliability", {})
+            with st.container(border=True):
+                h1, h2, h3 = st.columns([2, 5, 3])
+                with h1:
+                    st.markdown(f"**{item['time'].strftime('%I:%M %p')}**")
+                    st.caption("Scheduled")
+                with h2:
+                    st.markdown(f"**{task.title}**")
+                    st.caption(f"🐾 {task.pet_name} • {task.duration} min • {task.priority.name} priority")
+                with h3:
+                    rag_badge = "🧠 RAG ON" if rag_active else "⚪ RAG OFF"
+                    st.markdown(rag_badge)
+                    st.caption(f"Confidence {confidence_score:.2f}")
+
+                st.caption(_rag_impact_line(item))
+
+                d1, d2 = st.columns(2)
+                with d1:
+                    st.caption(f"Why this time: {reason_text}")
+                    st.caption(f"Applied rules: {', '.join(rules) if rules else '-'}")
+                with d2:
+                    st.caption(f"Retrieval confidence: {retrieval_confidence:.2f}")
+                    st.caption(f"Sources used: {source_count}")
+                    if sources:
+                        st.caption(f"Source IDs: {', '.join(sources)}")
+                    st.caption(f"Energy profile: {energy_level}")
+                    st.caption(
+                        f"Suggested exercise: {', '.join(exercise_types) if exercise_types else '-'}"
+                    )
+
+        if unscheduled_items:
+            st.markdown("#### Unscheduled Tasks")
+            for item in unscheduled_items:
+                task = item["task"]
+                with st.container(border=True):
+                    st.markdown(f"**{task.title}**")
+                    st.caption(f"🐾 {task.pet_name} • {task.duration} min • {task.priority.name} priority")
+                    st.caption(item.get("reason", "Could not be scheduled."))
+                    st.caption(_rag_impact_line(item))
+
+    with st.expander("Narrative Summary"):
+        st.text(daily_result.get("explanation", ""))
+
     with st.expander("Reliability Summary", expanded=True):
         col1, col2, col3 = st.columns(3)
         with col1:
