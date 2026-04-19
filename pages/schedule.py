@@ -79,12 +79,12 @@ def _rag_status_label(rag_active_tasks: int, total_tasks: int) -> str:
 
 
 def _guidance_badge(rag_active: bool, guidance_source: str) -> str:
+    if guidance_source in ("claude", "ai_planned") and rag_active:
+        return "🤖 AI-Powered"
     if guidance_source == "ai_planned":
         return "🤖 AI Planned"
     if not rag_active:
         return "⚪ No Guidance"
-    if guidance_source == "claude":
-        return "🤖 AI-Powered"
     return "🔍 Rules Match"
 
 
@@ -147,8 +147,8 @@ def _render_daily_result(daily_result: dict) -> None:
     schedule = daily_result.get("schedule", [])
     ai_powered_count = sum(
         1 for item in schedule
-        if item.get("guidance_profile", {}).get("guidance_source") == "claude"
-        and item.get("guidance_profile", {}).get("rag_active")
+        if item.get("guidance_profile", {}).get("rag_active")
+        and item.get("guidance_profile", {}).get("guidance_source") in ("claude", "ai_planned")
     )
 
     ai_planned_count = sum(

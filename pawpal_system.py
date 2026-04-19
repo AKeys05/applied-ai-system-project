@@ -987,7 +987,9 @@ class Scheduler:
 		# Process AI-assigned tasks; collect tasks for bitmap fallback
 		bitmap_tasks: list = []
 		for task in sorted_tasks:
-			assigned_time = ai_assignments.get(task.id)
+			ai_assignment = ai_assignments.get(task.id, {})
+			assigned_time = ai_assignment.get("time") if isinstance(ai_assignment, dict) else ai_assignment
+			ai_reason = ai_assignment.get("reason", "") if isinstance(ai_assignment, dict) else ""
 			if assigned_time is None:
 				bitmap_tasks.append(task)
 				continue
@@ -1039,7 +1041,7 @@ class Scheduler:
 						'task': task,
 						'time': assigned_time,
 						'pet_name': task.pet_name,
-						'reason': f"AI-planned schedule: optimally placed considering all {len(tasks)} tasks for the day.",
+						'reason': ai_reason or f"AI-planned schedule: optimally placed considering all {len(tasks)} tasks for the day.",
 						'applied_rules': applied_rules,
 						'confidence_score': confidence_score,
 						'retrieval_sources': retrieval_sources,

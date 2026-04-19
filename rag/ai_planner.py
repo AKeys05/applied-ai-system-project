@@ -146,12 +146,12 @@ def plan_daily_schedule(
     task_guidance: Dict[str, Dict],
     owner,
     target_date: date | None = None,
-) -> Dict[str, time | None] | None:
+) -> Dict[str, dict] | None:
     """
     Call Groq to produce a globally-optimal daily schedule.
 
     Returns:
-        Dict mapping task.id -> datetime.time (or None if Groq couldn't fit the task),
+        Dict mapping task.id -> {"time": datetime.time | None, "reason": str},
         or None if the API is unavailable or the call fails entirely.
     """
     if not tasks:
@@ -182,11 +182,14 @@ def plan_daily_schedule(
         assignments = data.get("assignments", [])
         if not isinstance(assignments, list):
             return None
-        result: Dict[str, time | None] = {}
+        result: Dict[str, dict] = {}
         for a in assignments:
             task_id = a.get("task_id")
             if task_id:
-                result[task_id] = _parse_hhmm(a.get("scheduled_time"))
+                result[task_id] = {
+                    "time": _parse_hhmm(a.get("scheduled_time")),
+                    "reason": a.get("reason", ""),
+                }
         _plan_cache[cache_key] = result
         return result
     except Exception as e:
