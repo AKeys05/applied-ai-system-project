@@ -3,14 +3,19 @@
   "owner": {
     "name": "Jordan",
     "timezone": "Local",
-    "availability_windows": [],
+    "availability_windows": [
+      [
+        "07:00",
+        "21:00"
+      ]
+    ],
     "constraints": {},
     "pets": [
       {
-        "name": "Mochi",
+        "name": "Biscuit",
         "species": "dog",
-        "breed": "Australian Shepherd",
-        "age_years": 2.0,
+        "breed": "Golden Retriever",
+        "age_years": 4.0,
         "activity_level": "medium",
         "preferences": {},
         "restrictions": [],
@@ -19,14 +24,14 @@
             "title": "Exercise - Walk #1",
             "duration": 30,
             "priority": "HIGH",
-            "pet_name": "Mochi",
-            "id": "b1dc21c8-c9f2-4972-bb1e-1607d8d1d5c1",
+            "pet_name": "Biscuit",
+            "id": "d344a08f-834d-4583-a6e6-ea60239324cd",
             "is_recurring": false,
-            "preferred_time": null,
+            "preferred_time": "07:30",
             "time_constraint": "after 07:00",
             "schedule_constraint": {
               "earliest_start": "07:00",
-              "latest_end": "10:00",
+              "latest_end": "21:00",
               "hard_constraint": true,
               "source": "profile"
             },
@@ -37,20 +42,44 @@
             "retrieval_sources": [],
             "task_source": "profile_generated",
             "skipped": false,
-            "locked_preferred_time": true
+            "locked_preferred_time": false
           },
           {
             "title": "Exercise - Walk #2",
             "duration": 30,
             "priority": "HIGH",
-            "pet_name": "Mochi",
-            "id": "0fb05ab7-0a7c-413f-a538-2626b7f2227c",
+            "pet_name": "Biscuit",
+            "id": "244951f2-ee8d-47c5-8bd1-13c7b484e90b",
             "is_recurring": false,
             "preferred_time": null,
             "time_constraint": "after 07:00",
             "schedule_constraint": {
               "earliest_start": "07:00",
-              "latest_end": "10:00",
+              "latest_end": "21:00",
+              "hard_constraint": true,
+              "source": "profile"
+            },
+            "completed": false,
+            "frequency": "daily",
+            "scheduled_date": "2026-04-19",
+            "parent_task_id": null,
+            "retrieval_sources": [],
+            "task_source": "profile_generated",
+            "skipped": false,
+            "locked_preferred_time": false
+          },
+          {
+            "title": "Exercise - Walk #3",
+            "duration": 30,
+            "priority": "HIGH",
+            "pet_name": "Biscuit",
+            "id": "861b33b4-b947-497e-878f-7128aa129b07",
+            "is_recurring": false,
+            "preferred_time": null,
+            "time_constraint": "after 07:00",
+            "schedule_constraint": {
+              "earliest_start": "07:00",
+              "latest_end": "21:00",
               "hard_constraint": true,
               "source": "profile"
             },
@@ -67,10 +96,10 @@
             "title": "Feeding - Meal #1",
             "duration": 15,
             "priority": "HIGH",
-            "pet_name": "Mochi",
-            "id": "d929a709-be5f-4e1c-b23c-a8da2c733feb",
+            "pet_name": "Biscuit",
+            "id": "22945bea-f53a-49c0-b447-1b2dced3ed35",
             "is_recurring": false,
-            "preferred_time": null,
+            "preferred_time": "08:00",
             "time_constraint": "after 07:00",
             "schedule_constraint": {
               "earliest_start": "07:00",
@@ -85,16 +114,16 @@
             "retrieval_sources": [],
             "task_source": "profile_generated",
             "skipped": false,
-            "locked_preferred_time": true
+            "locked_preferred_time": false
           },
           {
             "title": "Feeding - Meal #2",
             "duration": 15,
             "priority": "HIGH",
-            "pet_name": "Mochi",
-            "id": "8615988d-4c65-46f8-9c24-594f9f6a31a4",
+            "pet_name": "Biscuit",
+            "id": "87cf4b7f-3771-4916-affe-6b3b2383cdc7",
             "is_recurring": false,
-            "preferred_time": null,
+            "preferred_time": "18:00",
             "time_constraint": "after 07:00",
             "schedule_constraint": {
               "earliest_start": "07:00",
@@ -109,14 +138,14 @@
             "retrieval_sources": [],
             "task_source": "profile_generated",
             "skipped": false,
-            "locked_preferred_time": true
+            "locked_preferred_time": false
           },
           {
             "title": "Enrichment - Play Session",
             "duration": 60,
             "priority": "MEDIUM",
-            "pet_name": "Mochi",
-            "id": "fdee57cc-6e62-431f-aa14-091f42f82638",
+            "pet_name": "Biscuit",
+            "id": "f902970b-20e5-49cb-9b66-e568287bddd3",
             "is_recurring": false,
             "preferred_time": null,
             "time_constraint": "after 08:00",
@@ -134,31 +163,47 @@
             "task_source": "profile_generated",
             "skipped": false,
             "locked_preferred_time": false
+          },
+          {
+            "title": "Health - Medication",
+            "duration": 5,
+            "priority": "HIGH",
+            "pet_name": "Biscuit",
+            "id": "5a8ef53a-e671-4e5e-9bf8-90959f909358",
+            "is_recurring": false,
+            "preferred_time": "08:00",
+            "time_constraint": null,
+            "schedule_constraint": {
+              "earliest_start": null,
+              "latest_end": null,
+              "hard_constraint": true,
+              "source": "user"
+            },
+            "completed": false,
+            "frequency": "daily",
+            "scheduled_date": "2026-04-19",
+            "parent_task_id": null,
+            "retrieval_sources": [],
+            "task_source": "profile_generated",
+            "skipped": false,
+            "locked_preferred_time": true
           }
         ]
-      },
-      {
-        "name": "Lolly",
-        "species": "dog",
-        "breed": "Border Collie",
-        "age_years": 4.0,
-        "activity_level": "high",
-        "preferences": {},
-        "restrictions": [],
-        "tasks": []
       }
     ]
   },
   "last_routine_profiles": {
-    "Mochi": {
-      "walks_per_day": 2,
+    "Biscuit": {
+      "walks_per_day": 3,
       "meals_per_day": 2,
       "play_sessions_per_day": 1,
       "grooming_sessions_per_week": 0,
-      "med_doses": 0,
-      "medication_times": [],
+      "med_doses": 1,
+      "medication_times": [
+        "08:00"
+      ],
       "walk_window_start": "07:00",
-      "walk_window_end": "10:00",
+      "walk_window_end": "21:00",
       "meal_window_start": "07:00",
       "meal_window_end": "19:00",
       "play_window_start": "08:00",

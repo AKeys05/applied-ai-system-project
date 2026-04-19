@@ -61,16 +61,21 @@ class BreedGuidanceService:
             task_title=getattr(task, "title", ""),
         )
 
-        # --- Primary path: Claude AI ---
-        claude_advice = get_scheduling_advice(
-            species=getattr(pet, "species", ""),
-            breed=getattr(pet, "breed", ""),
-            age_years=getattr(pet, "age_years", None),
-            activity_level=getattr(pet, "activity_level", "medium"),
-            task_title=getattr(task, "title", ""),
-            task_duration=getattr(task, "duration", 30),
-            retrieved_context=entries,
-        )
+        # --- Primary path: AI advisor (skipped when AI planner key is present) ---
+        # When GROQ_API_KEY is set the day planner handles scheduling in one call;
+        # per-task advisor calls are redundant and waste quota.
+        import os
+        claude_advice = None
+        if not os.getenv("GROQ_API_KEY"):
+            claude_advice = get_scheduling_advice(
+                species=getattr(pet, "species", ""),
+                breed=getattr(pet, "breed", ""),
+                age_years=getattr(pet, "age_years", None),
+                activity_level=getattr(pet, "activity_level", "medium"),
+                task_title=getattr(task, "title", ""),
+                task_duration=getattr(task, "duration", 30),
+                retrieved_context=entries,
+            )
 
         if claude_advice:
             source_ids = [e.get("source_id") for e in entries if e.get("source_id")]

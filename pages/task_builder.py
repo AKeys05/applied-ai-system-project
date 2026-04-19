@@ -434,7 +434,7 @@ else:
 if not all_tasks:
     st.info("No tasks match your filters.")
 else:
-    priority_colors = {Priority.HIGH: "🔴", Priority.MEDIUM: "🟡", Priority.LOW: "🟢"}
+    priority_colors = {"HIGH": "🔴", "MEDIUM": "🟡", "LOW": "🟢"}
     for task in all_tasks:
         edit_key = f"_tb_editing_{task.id}"
         confirm_key = f"_tb_confirm_delete_{task.id}"
@@ -449,7 +449,7 @@ else:
             source_badge_text = " | ".join(source_badges)
 
             st.markdown(
-                f"{status_icon} {priority_colors[task.priority]} **{task.title}**{recurring_badge}  "
+                f"{status_icon} {priority_colors.get(task.priority.name, '⚪')} **{task.title}**{recurring_badge}  "
                 f"<span style='font-size:0.85em; color:#555;'>[{source_badge_text}]</span>",
                 unsafe_allow_html=True,
             )

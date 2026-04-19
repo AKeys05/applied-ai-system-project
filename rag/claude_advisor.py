@@ -1,11 +1,12 @@
 """
-Claude API integration for pet care scheduling advice.
+Groq API integration for pet care scheduling advice.
 
-Calls claude-haiku with tool use to get structured scheduling recommendations.
-Falls back gracefully to None if the API key is missing or any call fails.
-Results are cached in-memory by (species, breed, age_category, activity_level,
-normalized_task_title) to avoid redundant API calls within a session.
+Calls llama-3.3-70b-versatile with JSON mode to get structured scheduling
+recommendations. Falls back gracefully to None if the API key is missing
+or any call fails. Results are cached in-memory by
+(species, breed, age_category, activity_level, normalized_task_title).
 """
+import json
 import os
 import re
 from typing import Optional
@@ -13,53 +14,23 @@ from typing import Optional
 _client = None
 _cache: dict[str, dict] = {}
 
-_TOOL = {
-    "name": "provide_scheduling_advice",
-    "description": "Provide structured pet care scheduling recommendations.",
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "priority_boost": {
-                "type": "number",
-                "description": "Priority boost 0.0–1.0. Higher means schedule sooner.",
-            },
-            "window_start": {
-                "type": "string",
-                "description": "Recommended earliest start time HH:MM (24-hour), or null.",
-            },
-            "window_end": {
-                "type": "string",
-                "description": "Recommended latest end time HH:MM (24-hour), or null.",
-            },
-            "reasons": {
-                "type": "array",
-                "items": {"type": "string"},
-                "description": "1–3 concise reasons for the recommendations.",
-            },
-            "exercise_types": {
-                "type": "array",
-                "items": {"type": "string"},
-                "description": "Suitable activity types for this pet and task.",
-            },
-            "energy_level": {
-                "type": "string",
-                "enum": ["low", "medium", "high", "very_high"],
-                "description": "Pet's typical energy level for this task.",
-            },
-            "confidence": {
-                "type": "number",
-                "description": "Confidence in this advice, 0.0–1.0.",
-            },
-        },
-        "required": ["priority_boost", "reasons", "confidence"],
-    },
-}
-
 _SYSTEM = (
     "You are a veterinary-informed pet care scheduling assistant. "
     "Given a pet's profile and relevant breed guidelines, provide practical, "
     "concise scheduling advice. Use your breed and species knowledge to fill "
-    "gaps when retrieved guidelines are limited."
+    "gaps when retrieved guidelines are limited. "
+    "Always respond with valid JSON only."
+)
+
+_RESPONSE_SCHEMA = (
+    "Return a JSON object with exactly these fields:\n"
+    "- priority_boost: number 0.0-1.0 (how urgently to schedule this task)\n"
+    "- window_start: string HH:MM 24-hour or null (recommended earliest start)\n"
+    "- window_end: string HH:MM 24-hour or null (recommended latest end)\n"
+    "- reasons: array of 1-3 short strings explaining the recommendations\n"
+    "- exercise_types: array of strings (suitable activity types, empty if not applicable)\n"
+    "- energy_level: one of 'low', 'medium', 'high', 'very_high' or null\n"
+    "- confidence: number 0.0-1.0 (confidence in this advice)"
 )
 
 
@@ -67,18 +38,17 @@ def _get_client():
     global _client
     if _client is None:
         try:
-            from anthropic import Anthropic
-            api_key = os.getenv("ANTHROPIC_API_KEY")
+            from groq import Groq
+            api_key = os.getenv("GROQ_API_KEY")
             if not api_key:
                 return None
-            _client = Anthropic(api_key=api_key)
+            _client = Groq(api_key=api_key)
         except ImportError:
             return None
     return _client
 
 
 def _normalize_title(title: str) -> str:
-    """Collapse 'Walk #1' / 'Walk #2' to 'walk' so they share a cache entry."""
     return re.sub(r"\s*#\d+$", "", title).strip().lower()
 
 
@@ -104,8 +74,8 @@ def get_scheduling_advice(
     retrieved_context: list[dict],
 ) -> Optional[dict]:
     """
-    Call Claude to get structured scheduling advice for one pet task.
-    Returns the tool-use input dict, or None if unavailable or failed.
+    Call Groq to get structured scheduling advice for one pet task.
+    Returns a dict with scheduling fields, or None if unavailable or failed.
     """
     client = _get_client()
     if not client:
@@ -141,27 +111,28 @@ def get_scheduling_advice(
         f"- Activity level: {activity_level}\n\n"
         f"Task to schedule: {task_title} ({task_duration} min)\n\n"
         f"Retrieved breed/species guidelines:\n{context_text}\n\n"
-        f"Provide scheduling advice for this task."
+        f"Provide scheduling advice for this task.\n\n"
+        f"{_RESPONSE_SCHEMA}"
     )
 
     try:
-        response = client.messages.create(
-            model="claude-haiku-4-5-20251001",
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[
+                {"role": "system", "content": _SYSTEM},
+                {"role": "user", "content": user_message},
+            ],
+            response_format={"type": "json_object"},
             max_tokens=512,
-            system=_SYSTEM,
-            messages=[{"role": "user", "content": user_message}],
-            tools=[_TOOL],
-            tool_choice={"type": "tool", "name": "provide_scheduling_advice"},
         )
-        for block in response.content:
-            if block.type == "tool_use" and block.name == "provide_scheduling_advice":
-                _cache[cache_key] = block.input
-                return block.input
+        data = json.loads(response.choices[0].message.content)
+        if "priority_boost" in data and "confidence" in data:
+            _cache[cache_key] = data
+            return data
         return None
     except Exception:
         return None
 
 
 def clear_cache() -> None:
-    """Clear the in-memory advice cache (useful for testing)."""
     _cache.clear()

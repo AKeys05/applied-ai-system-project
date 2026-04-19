@@ -79,6 +79,8 @@ def _rag_status_label(rag_active_tasks: int, total_tasks: int) -> str:
 
 
 def _guidance_badge(rag_active: bool, guidance_source: str) -> str:
+    if guidance_source == "ai_planned":
+        return "🤖 AI Planned"
     if not rag_active:
         return "⚪ No Guidance"
     if guidance_source == "claude":
@@ -89,6 +91,7 @@ def _guidance_badge(rag_active: bool, guidance_source: str) -> str:
 _PRIORITY_ICON = {"HIGH": "🔴", "MEDIUM": "🟡", "LOW": "🟢"}
 
 _RULE_LABELS: dict[str, str] = {
+    "ai_planned": "AI day planner",
     "preferred_time": "preferred time honored",
     "preferred_time_fallback": "rescheduled from preferred time",
     "priority_sort": "placed by priority",
@@ -148,15 +151,22 @@ def _render_daily_result(daily_result: dict) -> None:
         and item.get("guidance_profile", {}).get("rag_active")
     )
 
+    ai_planned_count = sum(
+        1 for item in schedule
+        if "ai_planned" in item.get("applied_rules", [])
+    )
+
     st.markdown("#### AI Guidance Status")
-    s1, s2, s3, s4 = st.columns(4)
+    s1, s2, s3, s4, s5 = st.columns(5)
     with s1:
-        st.metric("AI-Powered Tasks", f"{ai_powered_count}/{total_tasks}")
+        st.metric("AI Planned", f"{ai_planned_count}/{total_tasks}")
     with s2:
-        st.metric("Guidance Influence", _rag_status_label(rag_active_tasks, total_tasks))
+        st.metric("AI-Powered Tasks", f"{ai_powered_count}/{total_tasks}")
     with s3:
-        st.metric("Fallback Count", rag_fallback_count)
+        st.metric("Guidance Influence", _rag_status_label(rag_active_tasks, total_tasks))
     with s4:
+        st.metric("Fallback Count", rag_fallback_count)
+    with s5:
         st.metric("Citation Coverage", f"{citation_coverage:.2f}")
 
     if schedule:

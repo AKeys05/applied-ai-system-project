@@ -747,7 +747,7 @@ class Scheduler:
 		return time(hours % 24, mins)
 
 	_CATEGORY_SPREAD: dict[str, list[int]] = {
-		"walk":      [7*60, 12*60, 17*60, 20*60],
+		"walk":      [9*60, 13*60, 17*60, 20*60],
 		"meal":      [7*60, 12*60, 18*60],
 		"medication": [8*60, 20*60],
 		"play":      [10*60, 15*60, 19*60],
@@ -796,6 +796,10 @@ class Scheduler:
 
 	def _resolve_task_time_bounds(self, task: Task) -> tuple[Optional[time], Optional[time]]:
 		"""Resolve effective time bounds from structured constraint, then legacy string."""
+		# Locked tasks: user's chosen time is absolute — no constraint check should block it
+		if task.locked_preferred_time:
+			return (None, None)
+
 		if task.schedule_constraint.earliest_start or task.schedule_constraint.latest_end:
 			return task.schedule_constraint.earliest_start, task.schedule_constraint.latest_end
 
@@ -962,7 +966,92 @@ class Scheduler:
 		# Initialize bitmap: False = available, True = occupied
 		time_slots = [False] * num_slots
 
+		# ── Phase 2.5: AI Day Planner ────────────────────────────────────────
+		# Call Claude with the full task list for a globally-optimal plan.
+		# Falls back to bitmap for any task Claude can't fit or if API unavailable.
+		ai_assignments: dict = {}
+		if enable_rag:
+			try:
+				from rag.ai_planner import plan_daily_schedule
+				ai_result = plan_daily_schedule(
+					tasks=tasks,
+					task_guidance=self.task_guidance,
+					owner=self.owner,
+					target_date=reference_date,
+				)
+				if ai_result is not None:
+					ai_assignments = ai_result
+			except Exception:
+				pass
+
+		# Process AI-assigned tasks; collect tasks for bitmap fallback
+		bitmap_tasks: list = []
 		for task in sorted_tasks:
+			assigned_time = ai_assignments.get(task.id)
+			if assigned_time is None:
+				bitmap_tasks.append(task)
+				continue
+
+			proposed_minutes = assigned_time.hour * 60 + assigned_time.minute
+			slots_needed = (task.duration + slot_duration - 1) // slot_duration
+
+			# Validate the AI assignment before trusting it
+			if (self._can_schedule_at(proposed_minutes, task.duration, task)
+					and self._within_owner_availability(proposed_minutes, task.duration)):
+
+				slot = (proposed_minutes - start_time) // slot_duration
+				if 0 <= slot <= num_slots - slots_needed:
+					# Mark bitmap to prevent collision with fallback tasks
+					for i in range(slot, slot + slots_needed):
+						time_slots[i] = True
+
+					# Build guidance profile
+					guidance = self.task_guidance.get(task.id, {})
+					retrieval_confidence = float(guidance.get('retrieval_confidence', 0.0))
+					rag_is_active = bool(enable_rag and guidance.get('rag_active'))
+					retrieval_sources = list(task.retrieval_sources)
+					if rag_is_active:
+						for source in guidance.get('sources', []):
+							if source not in retrieval_sources:
+								retrieval_sources.append(source)
+
+					applied_rules = ['ai_planned']
+					if rag_is_active:
+						applied_rules.append('rag_guidance')
+					if task.locked_preferred_time:
+						applied_rules.append('locked_preferred_time')
+					elif task.preferred_time:
+						applied_rules.append('preferred_time')
+					if getattr(self.owner, 'availability_windows', []):
+						applied_rules.append('owner_availability')
+
+					guidance_profile = {
+						'energy_level': guidance.get('energy_level'),
+						'preferred_exercise_types': list(guidance.get('preferred_exercise_types', [])),
+						'retrieval_confidence': retrieval_confidence,
+						'rag_active': rag_is_active,
+						'guidance_source': 'ai_planned',
+					}
+
+					confidence_score = round(max(0.0, min(1.0, 0.95 - (0.05 if rag_is_active else 0.0))), 2)
+
+					self.current_schedule.append({
+						'task': task,
+						'time': assigned_time,
+						'pet_name': task.pet_name,
+						'reason': f"AI-planned schedule: optimally placed considering all {len(tasks)} tasks for the day.",
+						'applied_rules': applied_rules,
+						'confidence_score': confidence_score,
+						'retrieval_sources': retrieval_sources,
+						'guidance_profile': guidance_profile,
+					})
+					continue
+
+			# AI assignment failed validation — fall back to bitmap
+			bitmap_tasks.append(task)
+
+		# ── Bitmap loop (runs for all tasks when no API key, or as fallback) ──
+		for task in bitmap_tasks:
 			# Calculate how many 15-minute slots this task needs
 			slots_needed = (task.duration + slot_duration - 1) // slot_duration  # Round up
 
