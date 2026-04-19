@@ -3,7 +3,7 @@ from datetime import timedelta
 
 import streamlit as st
 
-from pawpal_system import Scheduler
+from petplanify_system import Scheduler
 from ui_shared import (
     compute_schedule_input_fingerprint,
     display_task_card,

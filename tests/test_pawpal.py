@@ -1,4 +1,4 @@
-from pawpal_system import Owner, Pet, Task, Priority, Scheduler, Frequency, ScheduleConstraint, RoutineProfile
+from petplanify_system import Owner, Pet, Task, Priority, Scheduler, Frequency, ScheduleConstraint, RoutineProfile
 from datetime import time, date, timedelta
 
 

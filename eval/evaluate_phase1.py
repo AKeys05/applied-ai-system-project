@@ -4,7 +4,7 @@ from datetime import time
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
-from pawpal_system import Owner, Pet, Task, Priority, RoutineProfile, Scheduler
+from petplanify_system import Owner, Pet, Task, Priority, RoutineProfile, Scheduler
 
 
 def scenario_border_collie() -> Scheduler:
@@ -101,6 +101,73 @@ def scenario_profile_generated_border_collie() -> Scheduler:
     return Scheduler(owner)
 
 
+# ── Guardrail demo scenarios ──────────────────────────────────────────────────
+
+def scenario_conflict_same_pet() -> Scheduler:
+    """Two tasks for the same pet locked at the same time — triggers conflict detection."""
+    owner = Owner("Demo")
+    owner.add_availability_window(time(7, 0), time(22, 0))
+    dog = Pet(name="Buddy", species="dog", breed="Labrador Retriever", activity_level="medium")
+    owner.add_pet(dog)
+    owner.add_task("Buddy", Task(
+        title="Medication",
+        duration=10,
+        priority=Priority.HIGH,
+        pet_name="Buddy",
+        preferred_time=time(8, 0),
+        locked_preferred_time=True,
+    ))
+    owner.add_task("Buddy", Task(
+        title="Breakfast",
+        duration=15,
+        priority=Priority.HIGH,
+        pet_name="Buddy",
+        preferred_time=time(8, 0),
+    ))
+    return Scheduler(owner)
+
+
+def scenario_locked_outside_window() -> Scheduler:
+    """Task locked outside owner availability — triggers unschedulable guardrail warning."""
+    owner = Owner("Demo")
+    owner.add_availability_window(time(7, 0), time(10, 0))
+    dog = Pet(name="Rex", species="dog", activity_level="low")
+    owner.add_pet(dog)
+    owner.add_task("Rex", Task(
+        title="Evening Medication",
+        duration=10,
+        priority=Priority.HIGH,
+        pet_name="Rex",
+        preferred_time=time(20, 0),
+        locked_preferred_time=True,
+    ))
+    owner.add_task("Rex", Task(
+        title="Morning Walk",
+        duration=30,
+        priority=Priority.MEDIUM,
+        pet_name="Rex",
+    ))
+    return Scheduler(owner)
+
+
+def scenario_narrow_window_overflow() -> Scheduler:
+    """More tasks than the availability window can hold — triggers unscheduled + low-confidence warnings."""
+    owner = Owner("Demo")
+    owner.add_availability_window(time(8, 0), time(9, 0))  # only 60 minutes
+    cat = Pet(name="Whiskers", species="cat", activity_level="low")
+    owner.add_pet(cat)
+    for i in range(1, 4):  # 3 × 30-min tasks need 90 min; only 60 available
+        owner.add_task("Whiskers", Task(
+            title=f"Care Task #{i}",
+            duration=30,
+            priority=Priority.MEDIUM,
+            pet_name="Whiskers",
+        ))
+    return Scheduler(owner)
+
+
+# ── Core evaluation helpers ───────────────────────────────────────────────────
+
 def signature(schedule):
     return [(item["task"].title, item["time"], item.get("confidence_score", 0.0)) for item in schedule]
 
@@ -135,12 +202,71 @@ def run_consistency_check(name: str, scheduler: Scheduler) -> dict:
         "scheduled_ratio": rag_report["scheduled_ratio"],
         "overall_confidence": rag_report["overall_confidence"],
         "warnings": len(rag_report["guardrail_warnings"]),
+        "warning_texts": rag_report["guardrail_warnings"],
         "citation_coverage": rag_report["citation_coverage"],
         "constraint_respect": rag_report["constraint_respect"],
         "rag_active_tasks": rag_report["rag_active_tasks"],
         "rag_impact_tasks": changed_count,
         "rag_impact_delta": round(rag_impact_delta, 2),
     }
+
+
+def run_guardrail_demo() -> None:
+    print("\n=== Guardrail Behavior Examples ===")
+
+    # ── Demo 1: Pre-schedule conflict detection ───────────────────────────────
+    print("\n--- Conflict: pre-schedule detection of same-pet preferred-time clash ---")
+    sched1 = scenario_conflict_same_pet()
+    pre_conflicts = sched1.detect_preferred_time_conflicts()
+    if pre_conflicts:
+        print("  Pre-schedule conflicts detected (before scheduling runs):")
+        for c in pre_conflicts:
+            print(f"    ⚠  {c}")
+    schedule1 = sched1.generate_schedule(enable_rag=False)
+    post_conflicts1 = sched1.detect_conflicts()
+    for item in schedule1:
+        t = item["time"].strftime("%I:%M %p") if item["time"] else "UNSCHEDULED"
+        print(f"  {t}  {item['task'].title}  [{item['task'].pet_name}]")
+    if post_conflicts1:
+        print("  Post-schedule conflicts:")
+        for c in post_conflicts1:
+            print(f"    ✗  {c}")
+    else:
+        print("  Post-schedule: scheduler resolved the conflict automatically.")
+    report1 = sched1.get_reliability_report()
+    print(f"  Confidence: {report1['overall_confidence']:.2f} | Scheduled: {report1['scheduled_tasks']}/{report1['total_tasks']}")
+
+    # ── Demo 2 & 3: post-schedule guardrail warnings ──────────────────────────
+    remaining_demos = [
+        ("Guardrail: locked task outside availability window", scenario_locked_outside_window()),
+        ("Guardrail: more tasks than window allows", scenario_narrow_window_overflow()),
+    ]
+    for label, scheduler in remaining_demos:
+        print(f"\n--- {label} ---")
+        schedule = scheduler.generate_schedule(enable_rag=False)
+        report = scheduler.get_reliability_report()
+        conflicts = scheduler.detect_conflicts()
+
+        for item in schedule:
+            t = item["time"].strftime("%I:%M %p") if item["time"] else "UNSCHEDULED"
+            print(f"  {t}  {item['task'].title}  [{item['task'].pet_name}]")
+
+        if report["guardrail_warnings"]:
+            print("  Guardrail warnings:")
+            for w in report["guardrail_warnings"]:
+                print(f"    ⚠  {w}")
+        else:
+            print("  No guardrail warnings.")
+
+        if conflicts:
+            print("  Conflicts detected:")
+            for c in conflicts:
+                print(f"    ✗  {c}")
+
+        print(
+            f"  Confidence: {report['overall_confidence']:.2f} | "
+            f"Scheduled: {report['scheduled_tasks']}/{report['total_tasks']}"
+        )
 
 
 def main():
@@ -171,6 +297,11 @@ def main():
             f"rag_impact_tasks {result['rag_impact_tasks']} | "
             f"rag_impact_delta {result['rag_impact_delta']:.2f}"
         )
+        if result["warning_texts"]:
+            for w in result["warning_texts"]:
+                print(f"    ⚠  {w}")
+
+    run_guardrail_demo()
 
     if failures > 0:
         raise SystemExit(1)

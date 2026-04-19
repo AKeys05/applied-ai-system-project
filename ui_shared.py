@@ -6,7 +6,7 @@ from typing import Any
 
 import streamlit as st
 
-from pawpal_system import Owner, Priority
+from petplanify_system import Owner, Priority
 from persistence import SAVE_PATH, load_state, save_state
 
 

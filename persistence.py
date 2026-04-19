@@ -3,7 +3,7 @@ from datetime import date, time
 from pathlib import Path
 from typing import Any, Optional
 
-from pawpal_system import Frequency, Owner, Pet, Priority, ScheduleConstraint, Task
+from petplanify_system import Frequency, Owner, Pet, Priority, ScheduleConstraint, Task
 
 SAVE_PATH = Path(__file__).parent / "pawpal_save.json"
 

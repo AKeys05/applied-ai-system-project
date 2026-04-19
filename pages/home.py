@@ -2,7 +2,7 @@ import datetime
 
 import streamlit as st
 
-from pawpal_system import Pet
+from petplanify_system import Pet
 from ui_shared import (
     get_breed_options_for_species,
     init_app_state,

@@ -1,4 +1,4 @@
-from pawpal_system import Owner, Pet, Task, Scheduler, Priority
+from petplanify_system import Owner, Pet, Task, Scheduler, Priority
 from datetime import time
 
 if __name__ == "__main__":
