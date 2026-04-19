@@ -923,6 +923,7 @@ class Scheduler:
 				'preferred_exercise_types': list(guidance.get('preferred_exercise_types', [])),
 				'retrieval_confidence': retrieval_confidence,
 				'rag_active': rag_is_active,
+				'guidance_source': guidance.get('guidance_source', 'retriever'),
 			}
 			if rag_is_active:
 				for source in guidance.get('sources', []):

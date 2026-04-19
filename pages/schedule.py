@@ -78,6 +78,14 @@ def _rag_status_label(rag_active_tasks: int, total_tasks: int) -> str:
     return "None"
 
 
+def _guidance_badge(rag_active: bool, guidance_source: str) -> str:
+    if not rag_active:
+        return "⚪ No Guidance"
+    if guidance_source == "claude":
+        return "🤖 AI-Powered"
+    return "🔍 Rules Match"
+
+
 def _rag_impact_line(item: dict) -> str:
     task = item["task"]
     guidance_profile = item.get("guidance_profile", {})
@@ -117,18 +125,24 @@ def _render_daily_result(daily_result: dict) -> None:
     rag_fallback_count = reliability.get("rag_fallback_count", 0)
     citation_coverage = reliability.get("citation_coverage", 0.0)
 
-    st.markdown("#### RAG Status")
+    schedule = daily_result.get("schedule", [])
+    ai_powered_count = sum(
+        1 for item in schedule
+        if item.get("guidance_profile", {}).get("guidance_source") == "claude"
+        and item.get("guidance_profile", {}).get("rag_active")
+    )
+
+    st.markdown("#### AI Guidance Status")
     s1, s2, s3, s4 = st.columns(4)
     with s1:
-        st.metric("RAG Influence", _rag_status_label(rag_active_tasks, total_tasks))
+        st.metric("AI-Powered Tasks", f"{ai_powered_count}/{total_tasks}")
     with s2:
-        st.metric("RAG-Active Tasks", f"{rag_active_tasks}/{total_tasks}")
+        st.metric("Guidance Influence", _rag_status_label(rag_active_tasks, total_tasks))
     with s3:
         st.metric("Fallback Count", rag_fallback_count)
     with s4:
         st.metric("Citation Coverage", f"{citation_coverage:.2f}")
 
-    schedule = daily_result.get("schedule", [])
     if schedule:
         st.markdown("#### Daily Task Panels")
         scheduled_items = [item for item in schedule if item.get("time") is not None]
@@ -156,8 +170,8 @@ def _render_daily_result(daily_result: dict) -> None:
                     st.markdown(f"**{task.title}**")
                     st.caption(f"🐾 {task.pet_name} • {task.duration} min • {task.priority.name} priority")
                 with h3:
-                    rag_badge = "🧠 RAG ON" if rag_active else "⚪ RAG OFF"
-                    st.markdown(rag_badge)
+                    guidance_source = guidance_profile.get("guidance_source", "retriever")
+                    st.markdown(_guidance_badge(rag_active, guidance_source))
                     st.caption(f"Confidence {confidence_score:.2f}")
 
                 st.caption(_rag_impact_line(item))

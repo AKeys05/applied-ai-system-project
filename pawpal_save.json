@@ -14,7 +14,248 @@
         "activity_level": "medium",
         "preferences": {},
         "restrictions": [],
-        "tasks": []
+        "tasks": [
+          {
+            "title": "Exercise - Walk #1",
+            "duration": 30,
+            "priority": "HIGH",
+            "pet_name": "Mochi",
+            "id": "41cf45d7-90e4-4218-95ec-eddb626ac42b",
+            "is_recurring": false,
+            "preferred_time": null,
+            "time_constraint": "after 07:00",
+            "schedule_constraint": {
+              "earliest_start": "07:00",
+              "latest_end": "10:00",
+              "hard_constraint": true,
+              "source": "profile"
+            },
+            "completed": false,
+            "frequency": "daily",
+            "scheduled_date": "2026-04-19",
+            "parent_task_id": null,
+            "retrieval_sources": [],
+            "task_source": "profile_generated",
+            "skipped": false,
+            "locked_preferred_time": false
+          },
+          {
+            "title": "Exercise - Walk #2",
+            "duration": 30,
+            "priority": "HIGH",
+            "pet_name": "Mochi",
+            "id": "4aea17f1-8b86-4f42-8ec3-afd0bf185a36",
+            "is_recurring": false,
+            "preferred_time": "08:00",
+            "time_constraint": "after 07:00",
+            "schedule_constraint": {
+              "earliest_start": "07:00",
+              "latest_end": "10:00",
+              "hard_constraint": true,
+              "source": "profile"
+            },
+            "completed": false,
+            "frequency": "daily",
+            "scheduled_date": "2026-04-19",
+            "parent_task_id": null,
+            "retrieval_sources": [],
+            "task_source": "profile_generated",
+            "skipped": false,
+            "locked_preferred_time": true
+          },
+          {
+            "title": "Exercise - Walk #3",
+            "duration": 30,
+            "priority": "HIGH",
+            "pet_name": "Mochi",
+            "id": "099ebf2f-0029-486c-8409-b148b7bbb985",
+            "is_recurring": false,
+            "preferred_time": "08:00",
+            "time_constraint": "after 07:00",
+            "schedule_constraint": {
+              "earliest_start": "07:00",
+              "latest_end": "10:00",
+              "hard_constraint": true,
+              "source": "profile"
+            },
+            "completed": false,
+            "frequency": "daily",
+            "scheduled_date": "2026-04-19",
+            "parent_task_id": null,
+            "retrieval_sources": [],
+            "task_source": "profile_generated",
+            "skipped": false,
+            "locked_preferred_time": false
+          },
+          {
+            "title": "Feeding - Meal #1",
+            "duration": 15,
+            "priority": "HIGH",
+            "pet_name": "Mochi",
+            "id": "db757a57-1d54-4faa-a26b-7a8b81e78215",
+            "is_recurring": false,
+            "preferred_time": null,
+            "time_constraint": "after 07:00",
+            "schedule_constraint": {
+              "earliest_start": "07:00",
+              "latest_end": "19:00",
+              "hard_constraint": true,
+              "source": "profile"
+            },
+            "completed": false,
+            "frequency": "daily",
+            "scheduled_date": "2026-04-19",
+            "parent_task_id": null,
+            "retrieval_sources": [],
+            "task_source": "profile_generated",
+            "skipped": false,
+            "locked_preferred_time": false
+          },
+          {
+            "title": "Feeding - Meal #2",
+            "duration": 15,
+            "priority": "HIGH",
+            "pet_name": "Mochi",
+            "id": "7f84311c-a957-4fd8-9dd9-dc4f3215c357",
+            "is_recurring": false,
+            "preferred_time": null,
+            "time_constraint": "after 07:00",
+            "schedule_constraint": {
+              "earliest_start": "07:00",
+              "latest_end": "19:00",
+              "hard_constraint": true,
+              "source": "profile"
+            },
+            "completed": false,
+            "frequency": "daily",
+            "scheduled_date": "2026-04-19",
+            "parent_task_id": null,
+            "retrieval_sources": [],
+            "task_source": "profile_generated",
+            "skipped": false,
+            "locked_preferred_time": false
+          },
+          {
+            "title": "Feeding - Meal #3",
+            "duration": 15,
+            "priority": "HIGH",
+            "pet_name": "Mochi",
+            "id": "43a79f05-62ee-494b-9157-e8c41c490384",
+            "is_recurring": false,
+            "preferred_time": null,
+            "time_constraint": "after 07:00",
+            "schedule_constraint": {
+              "earliest_start": "07:00",
+              "latest_end": "19:00",
+              "hard_constraint": true,
+              "source": "profile"
+            },
+            "completed": false,
+            "frequency": "daily",
+            "scheduled_date": "2026-04-19",
+            "parent_task_id": null,
+            "retrieval_sources": [],
+            "task_source": "profile_generated",
+            "skipped": false,
+            "locked_preferred_time": false
+          },
+          {
+            "title": "Enrichment - Play Session #1",
+            "duration": 20,
+            "priority": "MEDIUM",
+            "pet_name": "Mochi",
+            "id": "ea20212c-1a1c-4638-98d0-08cdd5dacf74",
+            "is_recurring": false,
+            "preferred_time": null,
+            "time_constraint": "after 08:00",
+            "schedule_constraint": {
+              "earliest_start": "08:00",
+              "latest_end": "20:00",
+              "hard_constraint": true,
+              "source": "profile"
+            },
+            "completed": false,
+            "frequency": "daily",
+            "scheduled_date": "2026-04-19",
+            "parent_task_id": null,
+            "retrieval_sources": [],
+            "task_source": "profile_generated",
+            "skipped": false,
+            "locked_preferred_time": false
+          },
+          {
+            "title": "Enrichment - Play Session #2",
+            "duration": 20,
+            "priority": "MEDIUM",
+            "pet_name": "Mochi",
+            "id": "6a82ad57-98f9-4c2c-9239-5e9cc0f8f8da",
+            "is_recurring": false,
+            "preferred_time": null,
+            "time_constraint": "after 08:00",
+            "schedule_constraint": {
+              "earliest_start": "08:00",
+              "latest_end": "20:00",
+              "hard_constraint": true,
+              "source": "profile"
+            },
+            "completed": false,
+            "frequency": "daily",
+            "scheduled_date": "2026-04-19",
+            "parent_task_id": null,
+            "retrieval_sources": [],
+            "task_source": "profile_generated",
+            "skipped": false,
+            "locked_preferred_time": false
+          },
+          {
+            "title": "Health - Medication",
+            "duration": 10,
+            "priority": "HIGH",
+            "pet_name": "Mochi",
+            "id": "f19a496e-0f5c-46b7-ba60-942ad65ae5c3",
+            "is_recurring": false,
+            "preferred_time": "08:00",
+            "time_constraint": null,
+            "schedule_constraint": {
+              "earliest_start": null,
+              "latest_end": null,
+              "hard_constraint": true,
+              "source": "user"
+            },
+            "completed": false,
+            "frequency": "daily",
+            "scheduled_date": "2026-04-19",
+            "parent_task_id": null,
+            "retrieval_sources": [],
+            "task_source": "profile_generated",
+            "skipped": false,
+            "locked_preferred_time": false
+          },
+          {
+            "title": "Care - Grooming",
+            "duration": 25,
+            "priority": "LOW",
+            "pet_name": "Mochi",
+            "id": "58070902-32e1-43a6-91b5-84e3ad9ba50b",
+            "is_recurring": false,
+            "preferred_time": null,
+            "time_constraint": null,
+            "schedule_constraint": {
+              "earliest_start": null,
+              "latest_end": null,
+              "hard_constraint": true,
+              "source": "user"
+            },
+            "completed": false,
+            "frequency": "weekly",
+            "scheduled_date": "2026-04-19",
+            "parent_task_id": null,
+            "retrieval_sources": [],
+            "task_source": "profile_generated",
+            "skipped": false,
+            "locked_preferred_time": false
+          }
+        ]
       },
       {
         "name": "Lolly",
@@ -28,5 +269,23 @@
       }
     ]
   },
-  "last_routine_profiles": {}
+  "last_routine_profiles": {
+    "Mochi": {
+      "walks_per_day": 3,
+      "meals_per_day": 3,
+      "play_sessions_per_day": 2,
+      "grooming_sessions_per_week": 1,
+      "med_doses": 1,
+      "medication_times": [
+        "08:00"
+      ],
+      "walk_window_start": "07:00",
+      "walk_window_end": "10:00",
+      "meal_window_start": "07:00",
+      "meal_window_end": "19:00",
+      "play_window_start": "08:00",
+      "play_window_end": "20:00",
+      "regenerate_mode": true
+    }
+  }
 }
