@@ -561,10 +561,10 @@ class Owner:
 		"""Add a task to a specific pet's task list. Returns True if successful."""
 		pet = self.get_pet(pet_name)
 		if pet:
-			is_valid, error = task.validate_basic_fields()
+			is_valid, _ = task.validate_basic_fields()
 			if not is_valid:
 				return False
-			is_valid, error = task.validate_time_settings()
+			is_valid, _ = task.validate_time_settings()
 			if not is_valid:
 				return False
 			pet.add_task(task)
@@ -1403,7 +1403,7 @@ class Scheduler:
 		Returns list of human-readable conflict warnings.
 		Distinguishes between same-pet and multi-pet conflicts.
 		"""
-		is_valid, violations = self.validate_schedule(self.current_schedule)
+		_, violations = self.validate_schedule(self.current_schedule)
 		return violations
 
 	def get_conflict_summary(self) -> Dict[str, any]:

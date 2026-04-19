@@ -7,7 +7,7 @@ from typing import Any
 import streamlit as st
 
 from pawpal_system import Owner, Priority
-from persistence import load_state, save_state
+from persistence import SAVE_PATH, load_state, save_state
 
 
 def _serialize_for_fingerprint(value: Any) -> Any:
@@ -293,6 +293,25 @@ def render_sidebar_guidance(page_name: str, owner_obj: Owner) -> None:
             st.caption(f"Saved {last_saved.strftime('%I:%M %p')}")
         else:
             st.caption("No save data yet.")
+
+        if st.session_state.get("_confirm_reset"):
+            st.warning("This will delete all pets, tasks, and settings.")
+            col_yes, col_no = st.columns(2)
+            with col_yes:
+                if st.button("Yes, reset", key="sidebar_reset_confirm", type="primary"):
+                    SAVE_PATH.unlink(missing_ok=True)
+                    for key in list(st.session_state.keys()):
+                        del st.session_state[key]
+                    st.rerun()
+            with col_no:
+                if st.button("Cancel", key="sidebar_reset_cancel"):
+                    st.session_state._confirm_reset = False
+                    st.rerun()
+        else:
+            if st.button("🗑 Start Over", key="sidebar_reset_start", use_container_width=True):
+                st.session_state._confirm_reset = True
+                st.rerun()
+
         st.markdown("---")
         st.markdown("### Page Overview")
         st.caption(overview_by_page.get(page_name, "Manage this page's settings and actions."))

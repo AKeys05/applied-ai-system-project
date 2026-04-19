@@ -44,7 +44,7 @@ if review_step_key not in st.session_state:
     st.session_state[review_step_key] = 1
 # Migrate legacy string values written by the old radio widget
 if isinstance(st.session_state[review_step_key], str):
-    st.session_state[review_step_key] = 2 if "Confirm" in st.session_state[review_step_key] else 1
+    st.session_state[review_step_key] = 3 if "Confirm" in st.session_state[review_step_key] else 1
 
 if generated_tasks:
     current_step = st.session_state[review_step_key]
@@ -52,75 +52,116 @@ if generated_tasks:
     st.markdown("#### Review Generated Tasks")
 
     # Visual step indicator — not interactive, navigation via buttons only
-    ind_col1, ind_col2, ind_spacer = st.columns([2, 2, 4])
+    ind_col1, ind_col2, ind_col3, ind_spacer = st.columns([2, 2, 2, 2])
     with ind_col1:
-        st.markdown("**① Configure tasks**" if current_step == 1 else "① Configure tasks")
+        st.markdown("**① Include/Skip**" if current_step == 1 else "① Include/Skip")
     with ind_col2:
-        st.markdown("**② Confirm & generate**" if current_step == 2 else "② Confirm & generate")
+        st.markdown("**② Timing**" if current_step == 2 else "② Timing")
+    with ind_col3:
+        st.markdown("**③ Confirm**" if current_step == 3 else "③ Confirm")
     st.markdown("---")
 
+    # ────── STEP 1: Include/Skip Form ──────
     if current_step == 1:
-        st.caption("Adjust timing preferences below, then click **Save All & Continue** once.")
-        task_configs = {}
-        with st.form("task_review_all"):
+        st.caption("Select which tasks to include in the schedule.")
+        task_includes = {}
+        with st.form("task_review_include"):
             for task in generated_tasks:
                 with st.container(border=True):
-                    info_col, ctrl_col = st.columns([2, 3])
+                    info_col, ctrl_col = st.columns([4, 1])
                     with info_col:
                         st.markdown(f"**{task.title}**")
                         st.caption(f"{task.duration} min • {task.priority.name} priority")
                     with ctrl_col:
-                        c1, c2, c3 = st.columns(3)
-                        with c1:
-                            include = st.checkbox(
-                                "Include",
-                                value=not task.skipped,
-                                key=f"r_inc_{task.id}",
-                            )
-                        with c2:
-                            modes = ["No preference", "Flexible", "Locked"]
-                            if task.preferred_time is None:
-                                initial_mode = "No preference"
-                            elif task.locked_preferred_time:
-                                initial_mode = "Locked"
-                            else:
-                                initial_mode = "Flexible"
-                            mode = st.selectbox(
-                                "Timing",
-                                modes,
-                                index=modes.index(initial_mode),
-                                key=f"r_mode_{task.id}",
-                            )
-                        with c3:
-                            time_val = st.time_input(
-                                "Preferred time",
-                                value=task.preferred_time or datetime.time(8, 0),
-                                key=f"r_time_{task.id}",
-                                disabled=(initial_mode == "No preference"),
-                                help="Switch timing to Flexible or Locked to set a time.",
-                            )
-                    task_configs[task.id] = (include, mode, time_val)
+                        include = st.checkbox(
+                            "Include",
+                            value=not task.skipped,
+                            key=f"r_inc_{task.id}",
+                        )
+                    task_includes[task.id] = include
 
-            save_all = st.form_submit_button("Save All & Continue →", type="primary")
-            if save_all:
+            save_includes = st.form_submit_button("Save & Continue to Timing →", type="primary")
+            if save_includes:
                 for task in generated_tasks:
-                    include, mode, time_val = task_configs[task.id]
-                    update_fields = {"skipped": not include}
-                    if mode == "No preference":
-                        update_fields["preferred_time"] = None
-                        update_fields["locked_preferred_time"] = False
-                    elif mode == "Flexible":
-                        update_fields["preferred_time"] = time_val
-                        update_fields["locked_preferred_time"] = False
-                    else:
-                        update_fields["preferred_time"] = time_val
-                        update_fields["locked_preferred_time"] = True
-                    owner.edit_task(task.id, **update_fields)
-                mark_schedule_stale()
+                    owner.edit_task(task.id, skipped=not task_includes[task.id])
                 st.session_state[review_step_key] = 2
                 st.rerun()
 
-    else:  # Step 2: Confirm
+    # ────── STEP 2: Timing Configuration (Fully Reactive) ──────
+    elif current_step == 2:
+        st.caption("Configure timing preferences for included tasks.")
+        included_tasks = [t for t in generated_tasks if not t.skipped]
+
+        if not included_tasks:
+            st.info("No tasks included. Go back to select at least one task.")
+            if st.button("← Back to Include/Skip", key="task_step2_back"):
+                st.session_state[review_step_key] = 1
+                st.rerun()
+        else:
+            task_timing = {}
+            for task in included_tasks:
+                with st.container(border=True):
+                    title_col, ctrl_col = st.columns([3, 2])
+
+                    with title_col:
+                        st.markdown(f"**{task.title}**")
+                        st.caption(f"{task.duration} min • {task.priority.name}")
+
+                    with ctrl_col:
+                        modes = ["No preference", "Flexible", "Locked"]
+                        if task.preferred_time is None:
+                            initial_mode = "No preference"
+                        elif task.locked_preferred_time:
+                            initial_mode = "Locked"
+                        else:
+                            initial_mode = "Flexible"
+
+                        mode = st.selectbox(
+                            "Timing",
+                            modes,
+                            index=modes.index(initial_mode),
+                            key=f"timing_mode_{task.id}",
+                        )
+
+                        # Fully reactive: show/hide time input based on current mode value
+                        if mode == "No preference":
+                            st.caption("No time set")
+                            time_val = None
+                        else:
+                            time_val = st.time_input(
+                                "Preferred time",
+                                value=task.preferred_time or datetime.time(8, 0),
+                                key=f"timing_time_{task.id}",
+                            )
+
+                        task_timing[task.id] = (mode, time_val)
+
+            timing_col1, timing_col2 = st.columns(2)
+            with timing_col1:
+                if st.button("← Back to Include/Skip", key="task_step2_back_button"):
+                    st.session_state[review_step_key] = 1
+                    st.rerun()
+            with timing_col2:
+                if st.button("Save & Continue to Confirm →", key="task_step2_continue", type="primary"):
+                    for task in included_tasks:
+                        mode, time_val = task_timing[task.id]
+                        update_fields = {}
+                        if mode == "No preference":
+                            update_fields["preferred_time"] = None
+                            update_fields["locked_preferred_time"] = False
+                        elif mode == "Flexible":
+                            update_fields["preferred_time"] = time_val
+                            update_fields["locked_preferred_time"] = False
+                        else:  # Locked
+                            update_fields["preferred_time"] = time_val
+                            update_fields["locked_preferred_time"] = True
+                        owner.edit_task(task.id, **update_fields)
+                    mark_schedule_stale()
+                    st.session_state[review_step_key] = 3
+                    st.rerun()
+
+    # ────── STEP 3: Confirm ──────
+    else:  # current_step == 3
         included_count = len([t for t in generated_tasks if not t.skipped])
         skipped_count = len([t for t in generated_tasks if t.skipped])
         locked_count = len([t for t in generated_tasks if t.locked_preferred_time])
@@ -146,12 +187,12 @@ if generated_tasks:
             for warning in conflict_warnings:
                 st.caption(f"- {warning}")
 
-        st.caption("Completion actions are managed below in Current Tasks.")
+        st.caption("Ready to generate schedule.")
 
         back_col, generate_col = st.columns([1, 2])
         with back_col:
-            if st.button("← Back to Configure", key="task_back_to_step1"):
-                st.session_state[review_step_key] = 1
+            if st.button("← Back to Timing", key="task_back_to_step2"):
+                st.session_state[review_step_key] = 2
                 st.rerun()
         with generate_col:
             if st.button("Generate Schedule →", key="task_continue_to_schedule", type="primary"):
