@@ -125,7 +125,7 @@ class BreedGuidanceService:
             if source_type == "breed":
                 retrieval_confidence += 0.7
             elif source_type == "species":
-                retrieval_confidence += 0.35
+                retrieval_confidence += 0.5
 
         primary_energy = None
         if energy_levels:

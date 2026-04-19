@@ -13,6 +13,33 @@
             "end": "10:00"
           },
           "reason": "Dogs benefit from regular physical and mental activity, especially earlier in the day."
+        },
+        {
+          "task_keywords": ["meal", "feeding", "food", "breakfast", "dinner", "feed", "kibble", "treat"],
+          "priority_boost": 0.55,
+          "preferred_window": {
+            "start": "07:00",
+            "end": "08:30"
+          },
+          "reason": "Dogs benefit from consistent meal times spaced 8-12 hours apart to support stable blood sugar and healthy digestion."
+        },
+        {
+          "task_keywords": ["medication", "medicine", "pill", "health", "treatment", "dose", "supplement", "vet"],
+          "priority_boost": 0.75,
+          "preferred_window": {
+            "start": "07:30",
+            "end": "09:00"
+          },
+          "reason": "Medications should be given at a consistent daily time, ideally with or after morning feeding to reduce stomach irritation."
+        },
+        {
+          "task_keywords": ["groom", "brush", "bath", "nail", "trim", "comb", "grooming"],
+          "priority_boost": 0.3,
+          "preferred_window": {
+            "start": "09:00",
+            "end": "14:00"
+          },
+          "reason": "Grooming is best scheduled when the dog is calm and well-exercised, typically mid-morning."
         }
       ]
     },
@@ -29,6 +56,33 @@
             "end": "11:00"
           },
           "reason": "Cats often respond well to consistent enrichment windows."
+        },
+        {
+          "task_keywords": ["meal", "feeding", "food", "breakfast", "dinner", "feed", "kibble", "treat"],
+          "priority_boost": 0.5,
+          "preferred_window": {
+            "start": "07:00",
+            "end": "09:00"
+          },
+          "reason": "Cats benefit from structured feeding routines, typically twice daily at consistent times to support metabolic stability."
+        },
+        {
+          "task_keywords": ["medication", "medicine", "pill", "health", "treatment", "dose", "supplement", "vet"],
+          "priority_boost": 0.7,
+          "preferred_window": {
+            "start": "08:00",
+            "end": "09:30"
+          },
+          "reason": "Cat medications are most effective when given at a consistent time each day, ideally alongside or immediately after feeding."
+        },
+        {
+          "task_keywords": ["groom", "brush", "comb", "bath", "nail", "trim", "grooming"],
+          "priority_boost": 0.25,
+          "preferred_window": {
+            "start": "09:00",
+            "end": "14:00"
+          },
+          "reason": "Grooming sessions are best when the cat is relaxed and settled after morning activity."
         }
       ]
     }
@@ -65,6 +119,24 @@
             "end": "11:00"
           },
           "reason": "French Bulldogs should avoid prolonged exertion in hotter midday windows."
+        },
+        {
+          "task_keywords": ["meal", "feeding", "food", "feed", "kibble"],
+          "priority_boost": 0.6,
+          "preferred_window": {
+            "start": "07:00",
+            "end": "08:30"
+          },
+          "reason": "French Bulldogs are brachycephalic and prone to bloat; small, consistent meals eaten slowly are recommended."
+        },
+        {
+          "task_keywords": ["medication", "medicine", "pill", "health", "treatment", "supplement"],
+          "priority_boost": 0.7,
+          "preferred_window": {
+            "start": "07:30",
+            "end": "09:00"
+          },
+          "reason": "Medications for French Bulldogs should be given with food to avoid stomach upset, particularly important for this breed's sensitive digestion."
         }
       ]
     },
@@ -133,6 +205,24 @@
             "end": "10:30"
           },
           "reason": "Labradors thrive with frequent exercise and interactive play."
+        },
+        {
+          "task_keywords": ["meal", "feeding", "food", "feed", "kibble"],
+          "priority_boost": 0.65,
+          "preferred_window": {
+            "start": "07:00",
+            "end": "08:30"
+          },
+          "reason": "Labradors are prone to obesity and bloat; structured twice-daily meals with portion control are recommended, separated from exercise."
+        },
+        {
+          "task_keywords": ["medication", "medicine", "pill", "health", "treatment", "supplement"],
+          "priority_boost": 0.7,
+          "preferred_window": {
+            "start": "07:30",
+            "end": "09:00"
+          },
+          "reason": "Medications are best given at a consistent morning time, with food to aid absorption and reduce GI irritation."
         }
       ]
     },
@@ -150,6 +240,24 @@
             "end": "10:30"
           },
           "reason": "Goldens benefit from regular moderate-to-high activity scheduled consistently."
+        },
+        {
+          "task_keywords": ["meal", "feeding", "food", "feed", "kibble"],
+          "priority_boost": 0.6,
+          "preferred_window": {
+            "start": "07:00",
+            "end": "08:30"
+          },
+          "reason": "Golden Retrievers benefit from structured twice-daily meals separated from exercise to prevent bloat."
+        },
+        {
+          "task_keywords": ["medication", "medicine", "pill", "health", "treatment", "supplement"],
+          "priority_boost": 0.7,
+          "preferred_window": {
+            "start": "07:30",
+            "end": "09:00"
+          },
+          "reason": "Medications should be given consistently each morning, ideally with food to minimize stomach upset."
         }
       ]
     },
@@ -167,6 +275,24 @@
             "end": "10:00"
           },
           "reason": "German Shepherds need both physical and mental work, often best in the morning."
+        },
+        {
+          "task_keywords": ["meal", "feeding", "food", "feed", "kibble"],
+          "priority_boost": 0.7,
+          "preferred_window": {
+            "start": "07:00",
+            "end": "08:30"
+          },
+          "reason": "German Shepherds are prone to bloat and digestive sensitivity; twice-daily feeding at fixed times, separated from exercise, is strongly recommended."
+        },
+        {
+          "task_keywords": ["medication", "medicine", "pill", "health", "treatment", "supplement"],
+          "priority_boost": 0.75,
+          "preferred_window": {
+            "start": "07:30",
+            "end": "09:00"
+          },
+          "reason": "Medications should be given consistently with morning feeding to support compliance and reduce GI irritation in this breed."
         }
       ]
     },
@@ -354,6 +480,24 @@
             "end": "10:30"
           },
           "reason": "English Bulldogs usually need short, gentle sessions and heat-aware timing."
+        },
+        {
+          "task_keywords": ["meal", "feeding", "food", "feed", "kibble"],
+          "priority_boost": 0.65,
+          "preferred_window": {
+            "start": "07:00",
+            "end": "08:30"
+          },
+          "reason": "English Bulldogs are brachycephalic with sensitive digestion; small controlled meals at consistent times prevent respiratory and GI issues."
+        },
+        {
+          "task_keywords": ["medication", "medicine", "pill", "health", "treatment", "supplement"],
+          "priority_boost": 0.72,
+          "preferred_window": {
+            "start": "07:30",
+            "end": "09:00"
+          },
+          "reason": "Medications should be administered with food at a consistent time daily, especially important for this breed's respiratory and joint health management."
         }
       ]
     },
@@ -371,6 +515,24 @@
             "end": "10:30"
           },
           "reason": "Pugs typically need shorter activity periods and cooler-day scheduling."
+        },
+        {
+          "task_keywords": ["meal", "feeding", "food", "feed", "kibble"],
+          "priority_boost": 0.65,
+          "preferred_window": {
+            "start": "07:00",
+            "end": "08:30"
+          },
+          "reason": "Pugs are prone to obesity and brachycephalic-related digestive issues; small, measured meals at consistent times are essential."
+        },
+        {
+          "task_keywords": ["medication", "medicine", "pill", "health", "treatment", "supplement"],
+          "priority_boost": 0.72,
+          "preferred_window": {
+            "start": "07:30",
+            "end": "09:00"
+          },
+          "reason": "Medications for Pugs should be given with food to reduce irritation, at a fixed daily time for consistency."
         }
       ]
     },
@@ -422,6 +584,24 @@
             "end": "10:30"
           },
           "reason": "Great Danes often need moderate, joint-friendly activity with consistent timing."
+        },
+        {
+          "task_keywords": ["meal", "feeding", "food", "feed", "kibble"],
+          "priority_boost": 0.8,
+          "preferred_window": {
+            "start": "07:00",
+            "end": "08:00"
+          },
+          "reason": "Great Danes are at high risk of bloat (GDV); feeding must be separated from exercise by at least one hour and meals kept calm and consistent."
+        },
+        {
+          "task_keywords": ["medication", "medicine", "pill", "health", "treatment", "supplement"],
+          "priority_boost": 0.7,
+          "preferred_window": {
+            "start": "07:30",
+            "end": "09:00"
+          },
+          "reason": "Medications should be given at consistent daily times, ideally with feeding and never immediately before or after strenuous activity."
         }
       ]
     },
