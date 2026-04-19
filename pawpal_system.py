@@ -582,6 +582,27 @@ class Owner:
 			return True
 		return False
 
+	def remove_task(self, task_id: str) -> bool:
+		"""Remove a task by ID from its pet and the task index. Returns True if found."""
+		task = self.get_task_by_id(task_id)
+		if not task:
+			return False
+		pet = self.get_pet(task.pet_name)
+		if pet:
+			pet.tasks = [t for t in pet.tasks if t.id != task_id]
+		self.task_index.pop(task_id, None)
+		return True
+
+	def remove_pet(self, pet_name: str) -> bool:
+		"""Remove a pet and all its tasks. Returns True if found."""
+		pet = self.pets.pop(pet_name, None)
+		if pet is None:
+			return False
+		for task in pet.tasks:
+			self.task_index.pop(task.id, None)
+		self.constraints.pop(pet_name, None)
+		return True
+
 	def complete_task(self, task_id: str) -> tuple[bool, Optional[Task]]:
 		"""Mark a task complete and generate next occurrence if recurring.
 

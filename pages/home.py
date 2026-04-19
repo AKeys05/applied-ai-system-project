@@ -84,18 +84,6 @@ st.subheader("🐾 Manage Pets")
 
 if owner.pets:
     st.write("**Your Pets:**")
-    pets_data = []
-    for pet in owner.pets.values():
-        pets_data.append(
-            {
-                "Name": pet.name,
-                "Species": pet.species.capitalize(),
-                "Breed": pet.breed or "-",
-                "Activity": pet.activity_level.capitalize() if pet.activity_level else "-",
-                "Tasks": len(pet.tasks),
-            }
-        )
-    st.table(pets_data)
 
     legacy_species_pets = [
         pet.name for pet in owner.pets.values() if pet.species not in {"dog", "cat"}
@@ -106,6 +94,36 @@ if owner.pets:
             "Legacy pets currently outside this scope: "
             f"{', '.join(legacy_species_pets)}."
         )
+
+    for pet in list(owner.pets.values()):
+        confirm_key = f"_home_confirm_delete_pet_{pet.name}"
+        with st.container(border=True):
+            info_col, btn_col = st.columns([5, 1])
+            with info_col:
+                st.markdown(f"**{pet.name}** — {pet.species.capitalize()} / {pet.breed or 'Mixed'}")
+                st.caption(
+                    f"Activity: {pet.activity_level.capitalize()} • "
+                    f"Age: {pet.age_years if pet.age_years is not None else '?'} yrs • "
+                    f"{len(pet.tasks)} task(s)"
+                )
+            with btn_col:
+                if st.button("Delete", key=f"home_delete_pet_{pet.name}"):
+                    st.session_state[confirm_key] = True
+                    st.rerun()
+
+            if st.session_state.get(confirm_key):
+                st.warning(f"Delete **{pet.name}** and all their tasks? This cannot be undone.")
+                yes_col, no_col, _ = st.columns([1, 1, 4])
+                with yes_col:
+                    if st.button("Yes, delete", key=f"home_confirm_yes_{pet.name}"):
+                        owner.remove_pet(pet.name)
+                        st.session_state.pop(confirm_key, None)
+                        mark_schedule_stale()
+                        st.rerun()
+                with no_col:
+                    if st.button("Cancel", key=f"home_confirm_no_{pet.name}"):
+                        st.session_state.pop(confirm_key, None)
+                        st.rerun()
 else:
     st.info("No pets added yet. Add your first pet below!")
 

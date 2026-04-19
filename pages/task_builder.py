@@ -444,6 +444,9 @@ if not all_tasks:
 else:
     priority_colors = {Priority.HIGH: "🔴", Priority.MEDIUM: "🟡", Priority.LOW: "🟢"}
     for task in all_tasks:
+        edit_key = f"_tb_editing_{task.id}"
+        confirm_key = f"_tb_confirm_delete_{task.id}"
+
         col1, col2 = st.columns([4, 1])
         with col1:
             recurring_badge = f" `{task.frequency.value}`" if task.frequency else ""
@@ -488,6 +491,84 @@ else:
                     st.rerun()
                 else:
                     st.error("❌ Failed to complete task")
+
+            if st.button("Edit", key=f"task_edit_btn_{task.id}"):
+                for k in list(st.session_state.keys()):
+                    if k.startswith("_tb_editing_") and k != edit_key:
+                        del st.session_state[k]
+                st.session_state[edit_key] = not st.session_state.get(edit_key, False)
+                st.rerun()
+
+            if not st.session_state.get(confirm_key):
+                if st.button("Delete", key=f"task_delete_btn_{task.id}"):
+                    st.session_state[confirm_key] = True
+                    st.rerun()
+            else:
+                st.warning("Delete?")
+                yes_col, no_col = st.columns(2)
+                with yes_col:
+                    if st.button("Yes", key=f"task_delete_yes_{task.id}"):
+                        owner.remove_task(task.id)
+                        st.session_state.pop(confirm_key, None)
+                        st.session_state.pop(edit_key, None)
+                        mark_schedule_stale()
+                        st.rerun()
+                with no_col:
+                    if st.button("No", key=f"task_delete_no_{task.id}"):
+                        st.session_state.pop(confirm_key, None)
+                        st.rerun()
+
+        if st.session_state.get(edit_key):
+            with st.container(border=True):
+                st.markdown(f"**Edit: {task.title}**")
+                e1, e2, e3 = st.columns(3)
+                with e1:
+                    new_title = st.text_input("Title", value=task.title, key=f"edit_title_{task.id}")
+                with e2:
+                    new_duration = st.number_input(
+                        "Duration (min)", min_value=1, max_value=240,
+                        value=task.duration, key=f"edit_duration_{task.id}"
+                    )
+                with e3:
+                    priority_names = ["low", "medium", "high"]
+                    current_priority = task.priority.name.lower()
+                    new_priority_str = st.selectbox(
+                        "Priority", priority_names,
+                        index=priority_names.index(current_priority),
+                        key=f"edit_priority_{task.id}",
+                    )
+
+                use_pref_time = st.checkbox(
+                    "Set preferred time",
+                    value=task.preferred_time is not None,
+                    key=f"edit_use_pref_{task.id}",
+                )
+                new_preferred_time = None
+                if use_pref_time:
+                    new_preferred_time = st.time_input(
+                        "Preferred time",
+                        value=task.preferred_time or datetime.time(8, 0),
+                        key=f"edit_pref_time_{task.id}",
+                    )
+
+                save_col, cancel_col = st.columns(2)
+                with save_col:
+                    if st.button("Save Changes", key=f"edit_save_{task.id}"):
+                        priority_map = {"low": Priority.LOW, "medium": Priority.MEDIUM, "high": Priority.HIGH}
+                        owner.edit_task(
+                            task.id,
+                            title=new_title,
+                            duration=int(new_duration),
+                            priority=priority_map[new_priority_str],
+                            preferred_time=new_preferred_time,
+                        )
+                        st.session_state.pop(edit_key, None)
+                        mark_schedule_stale()
+                        st.rerun()
+                with cancel_col:
+                    if st.button("Cancel", key=f"edit_cancel_{task.id}"):
+                        st.session_state.pop(edit_key, None)
+                        st.rerun()
 
         st.divider()
 

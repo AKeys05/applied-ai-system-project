@@ -15,6 +15,16 @@
         "preferences": {},
         "restrictions": [],
         "tasks": []
+      },
+      {
+        "name": "Lolly",
+        "species": "dog",
+        "breed": "Border Collie",
+        "age_years": 4.0,
+        "activity_level": "high",
+        "preferences": {},
+        "restrictions": [],
+        "tasks": []
       }
     ]
   },
