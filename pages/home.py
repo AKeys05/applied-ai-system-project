@@ -15,7 +15,7 @@ from ui_shared import (
 st.title("🐾 PawPal+")
 st.markdown("Welcome to the PawPal+ app - your personal pet care planning assistant!")
 
-with st.expander("Features", expanded=True):
+with st.expander("Features", expanded=False):
     st.markdown(
         """
 **PawPal+** is a pet care planning assistant that helps you manage pet care tasks with:
@@ -43,14 +43,7 @@ owner_name = st.text_input("Owner name", value=owner.name, key="home_owner_name"
 if owner_name != owner.name:
     owner.name = owner_name
 
-owner_col1, owner_col2 = st.columns(2)
-with owner_col1:
-    owner_timezone = st.text_input("Timezone", value=owner.timezone, key="home_owner_timezone")
-    if owner_timezone != owner.timezone:
-        owner.set_timezone(owner_timezone)
-        mark_schedule_stale()
-with owner_col2:
-    st.caption("Optional availability windows guide when scheduling can happen.")
+st.caption("Optional: set availability windows to limit when tasks can be scheduled.")
 
 availability_col1, availability_col2, availability_col3 = st.columns(3)
 with availability_col1:

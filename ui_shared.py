@@ -68,7 +68,6 @@ def compute_schedule_input_fingerprint(owner_obj: Owner) -> str:
         pets_payload.append(pet_payload)
 
     owner_payload = {
-        "timezone": owner_obj.timezone,
         "availability_windows": list(owner_obj.availability_windows),
         "pets": pets_payload,
     }
@@ -169,7 +168,7 @@ def _autosave_if_changed(owner: Owner) -> None:
 
 
 def owner_profile_complete(owner_obj: Owner) -> bool:
-    return bool(owner_obj.name.strip()) and bool(owner_obj.timezone.strip())
+    return bool(owner_obj.name.strip())
 
 
 def pet_profile_complete(owner_obj: Owner) -> bool:
@@ -206,7 +205,7 @@ def render_workflow_progress(owner_obj: Owner) -> tuple[bool, bool, bool]:
         st.metric("Current Phase", current_phase_label)
 
     if not owner_ready:
-        st.info("Start with owner details: name and timezone.")
+        st.info("Enter your name to get started.")
     elif not pets_ready:
         st.info("Add at least one pet to unlock routine generation.")
     else:
@@ -268,9 +267,9 @@ def render_sidebar_guidance(page_name: str, owner_obj: Owner) -> None:
 
     instructions_by_page = {
         "Home": [
-            "Set owner name and timezone first.",
+            "Enter your name to get started.",
             "Add at least one pet profile.",
-            "Optional: add owner availability windows.",
+            "Optional: add availability windows to limit scheduling hours.",
             "When ready, go to Task Builder.",
         ],
         "Task Builder": [
