@@ -154,6 +154,7 @@ def init_app_state() -> Owner:
     if st.session_state.schedule_state.get("input_fingerprint") is None:
         update_schedule_fingerprint(owner)
 
+    owner.prune_old_completed_tasks()
     _autosave_if_changed(owner)
     return owner
 

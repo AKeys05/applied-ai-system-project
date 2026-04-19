@@ -582,6 +582,18 @@ class Owner:
 			return True
 		return False
 
+	def prune_old_completed_tasks(self) -> int:
+		"""Remove completed tasks from a previous day. Returns count removed."""
+		today = date.today()
+		to_remove = [
+			task.id
+			for task in self.get_all_tasks()
+			if task.completed and (task.scheduled_date is None or task.scheduled_date < today)
+		]
+		for task_id in to_remove:
+			self.remove_task(task_id)
+		return len(to_remove)
+
 	def remove_task(self, task_id: str) -> bool:
 		"""Remove a task by ID from its pet and the task index. Returns True if found."""
 		task = self.get_task_by_id(task_id)

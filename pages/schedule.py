@@ -180,7 +180,7 @@ def _render_daily_result(daily_result: dict) -> None:
 
             with st.container(border=True):
                 # ── Header row ────────────────────────────────────────────
-                h1, h2, h3 = st.columns([2, 5, 3])
+                h1, h2, h3, h4 = st.columns([2, 5, 2, 2])
                 with h1:
                     st.markdown(f"### {item['time'].strftime('%I:%M %p')}")
                 with h2:
@@ -193,6 +193,14 @@ def _render_daily_result(daily_result: dict) -> None:
                 with h3:
                     st.markdown(_guidance_badge(rag_active, guidance_source))
                     st.caption(_confidence_label(confidence_score))
+                with h4:
+                    if task.completed:
+                        st.success("✅ Done")
+                    else:
+                        if st.button("Mark Done", key=f"sched_done_{task.id}"):
+                            owner.complete_task(task.id)
+                            mark_schedule_stale()
+                            st.rerun()
 
                 st.divider()
 
